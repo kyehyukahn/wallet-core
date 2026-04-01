@@ -2,6 +2,8 @@ pub mod address_manager;
 pub mod bitcoin_wallet_chain;
 pub mod error;
 pub mod events;
+pub mod persistence;
+pub mod recovery;
 pub mod tx_tracker;
 pub mod types;
 pub mod utxo_tracker;
