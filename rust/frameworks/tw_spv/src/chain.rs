@@ -11,6 +11,12 @@ use tw_utxo::encode::Encodable;
 pub enum ChainId {
     BitcoinMainnet,
     BitcoinTestnet,
+    BitcoinCashMainnet,
+    BitcoinCashTestnet,
+    LitecoinMainnet,
+    LitecoinTestnet,
+    DogecoinMainnet,
+    DogecoinTestnet,
 }
 
 #[derive(Debug, Clone, Copy)]
