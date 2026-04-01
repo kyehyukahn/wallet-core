@@ -13,3 +13,4 @@ pub mod messages;
 pub mod peer;
 pub mod peer_manager;
 pub mod runtime;
+pub mod sync_manager;
