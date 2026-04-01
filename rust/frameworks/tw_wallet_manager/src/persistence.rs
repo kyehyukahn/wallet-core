@@ -51,7 +51,6 @@ pub trait Persistence: Send + Sync {
     ) -> Result<(), PersistenceError>;
 }
 
-#[cfg(test)]
 pub mod test_persistence {
     use super::*;
     use std::sync::Mutex;
@@ -62,6 +61,12 @@ pub mod test_persistence {
         chain_state: Mutex<Option<ChainState>>,
         wallet_state: Mutex<Option<WalletState>>,
         headers: Mutex<Vec<(u32, BlockHeader)>>,
+    }
+
+    impl Default for InMemoryPersistence {
+        fn default() -> Self {
+            Self::new()
+        }
     }
 
     impl InMemoryPersistence {
