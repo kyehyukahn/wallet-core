@@ -1,3 +1,13 @@
 // SPDX-License-Identifier: Apache-2.0
+pub mod addr;
+pub mod feefilter;
+pub mod filterload;
+pub mod getblocks;
+pub mod getdata;
 pub mod header;
+pub mod headers;
+pub mod inv;
+pub mod merkleblock_msg;
+pub mod ping;
+pub mod reject;
 pub mod version;
