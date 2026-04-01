@@ -9,4 +9,5 @@ pub mod decode;
 pub mod error;
 pub mod events;
 pub mod merkle_block;
+pub mod messages;
 pub mod runtime;
