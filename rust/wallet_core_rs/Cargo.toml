@@ -34,7 +34,7 @@ utils = [
     "tw_proto",
     "uuid"
 ]
-spv = ["tw_spv/tokio-runtime", "tw_wallet_manager", "tw_memory"]
+spv = ["tw_spv/tokio-runtime", "tw_wallet_manager", "tw_memory", "dep:bitcoin", "dep:tokio"]
 
 [dependencies]
 bitreader = "0.3.8"
@@ -55,4 +55,6 @@ tw_solana = { path = "../chains/tw_solana", optional = true }
 tw_ton = { path = "../chains/tw_ton", optional = true }
 tw_spv = { path = "../frameworks/tw_spv", optional = true }
 tw_wallet_manager = { path = "../frameworks/tw_wallet_manager", optional = true }
+bitcoin = { version = "0.30.0", optional = true }
+tokio = { version = "1", features = ["net"], optional = true }
 uuid = { version = "1.7", features = ["v4"], optional = true }
