@@ -1,7 +1,10 @@
 pub mod address_manager;
+pub mod bcash_wallet_chain;
 pub mod bitcoin_wallet_chain;
+pub mod dogecoin_wallet_chain;
 pub mod error;
 pub mod events;
+pub mod litecoin_wallet_chain;
 pub mod persistence;
 pub mod recovery;
 pub mod tx_tracker;
