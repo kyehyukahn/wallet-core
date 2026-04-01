@@ -44,6 +44,7 @@
 //! assert_eq(eth_signature.v, H256::from(EXPECTED_V));
 //! ```
 
+pub mod bip38;
 pub mod ecdsa;
 pub mod ed25519;
 pub mod ffi;
