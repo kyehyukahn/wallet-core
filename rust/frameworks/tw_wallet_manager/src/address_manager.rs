@@ -151,6 +151,16 @@ impl AddressManager {
             .map(|s| s.as_str())
     }
 
+    /// Return all known addresses.
+    pub fn all_addresses(&self) -> &HashSet<String> {
+        &self.all_addresses
+    }
+
+    /// Return all used addresses.
+    pub fn used_addresses(&self) -> &HashSet<String> {
+        &self.used_addresses
+    }
+
     /// Return the current cursors for persistence: (external_cursor, internal_cursor).
     pub fn cursors(&self) -> (u32, u32) {
         (self.external_cursor, self.internal_cursor)

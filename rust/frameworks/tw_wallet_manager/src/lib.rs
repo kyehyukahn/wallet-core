@@ -7,4 +7,6 @@ pub mod recovery;
 pub mod tx_tracker;
 pub mod types;
 pub mod utxo_tracker;
+pub mod wallet;
 pub mod wallet_chain;
+pub mod wallet_manager;
