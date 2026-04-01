@@ -17,3 +17,5 @@ pub mod peer;
 pub mod peer_manager;
 pub mod runtime;
 pub mod sync_manager;
+#[cfg(feature = "tokio-runtime")]
+pub mod tokio_runtime;
