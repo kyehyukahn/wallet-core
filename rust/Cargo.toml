@@ -27,6 +27,7 @@ members = [
     "frameworks/tw_substrate",
     "frameworks/tw_ton_sdk",
     "frameworks/tw_utxo",
+    "frameworks/tw_spv",
     "tw_any_coin",
     "tw_base58_address",
     "tw_bech32_address",

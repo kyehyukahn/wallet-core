@@ -1,0 +1,13 @@
+[package]
+name = "tw_spv"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+byteorder = "1.4"
+tw_hash = { path = "../../tw_hash" }
+tw_encoding = { path = "../../tw_encoding" }
+tw_memory = { path = "../../tw_memory" }
+tw_utxo = { path = "../tw_utxo" }
+
+[dev-dependencies]

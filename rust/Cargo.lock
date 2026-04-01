@@ -2597,6 +2597,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "tw_spv"
+version = "0.1.0"
+dependencies = [
+ "byteorder",
+ "tw_encoding",
+ "tw_hash",
+ "tw_memory",
+ "tw_utxo",
+]
+
+[[package]]
 name = "tw_ss58_address"
 version = "0.1.0"
 dependencies = [
