@@ -100,6 +100,26 @@ impl BitcoinWalletManager {
     pub fn is_initialized(&self) -> bool {
         self.is_initialized
     }
+
+    /// Update fee rate from SPV peer feefilter (BIP133).
+    /// Only updates if higher than current (peers report minimum).
+    pub fn update_fee_rate_from_peer(&mut self, peer_fee_per_kb: u64) {
+        if peer_fee_per_kb > self.wallet.fee_rate() {
+            self.wallet.set_fee_rate(peer_fee_per_kb);
+        }
+    }
+
+    pub fn estimate_fee(&self, amount: u64) -> u64 {
+        self.wallet.estimate_fee_for_amount(amount)
+    }
+
+    pub fn max_spendable(&self) -> u64 {
+        self.wallet.max_spendable()
+    }
+
+    pub fn min_output_amount(&self) -> u64 {
+        self.wallet.min_output_amount()
+    }
 }
 
 #[cfg(test)]
@@ -154,5 +174,47 @@ mod tests {
         assert_eq!(mgr.fee_rate(), 10_000);
         mgr.set_fee_rate(25_000);
         assert_eq!(mgr.fee_rate(), 25_000);
+    }
+
+    #[test]
+    fn test_update_fee_rate_from_peer() {
+        let persistence = Arc::new(InMemoryPersistence::new());
+        let mut mgr = BitcoinWalletManager::new(test_xpub(), persistence).unwrap();
+        assert_eq!(mgr.fee_rate(), 10_000);
+
+        // Higher fee rate should update.
+        mgr.update_fee_rate_from_peer(15_000);
+        assert_eq!(mgr.fee_rate(), 15_000);
+
+        // Lower fee rate should not update.
+        mgr.update_fee_rate_from_peer(12_000);
+        assert_eq!(mgr.fee_rate(), 15_000);
+    }
+
+    #[test]
+    fn test_wallet_manager_max_spendable() {
+        let persistence = Arc::new(InMemoryPersistence::new());
+        let mut mgr = BitcoinWalletManager::new(test_xpub(), persistence).unwrap();
+
+        // Empty wallet returns 0.
+        assert_eq!(mgr.max_spendable(), 0);
+
+        // Add a UTXO and verify max_spendable > 0.
+        use crate::types::UtxoRecord;
+        use tw_hash::H256;
+        use tw_utxo::transaction::transaction_parts::OutPoint;
+        let utxo = UtxoRecord {
+            outpoint: OutPoint {
+                hash: H256::default(),
+                index: 0,
+            },
+            value: 100_000,
+            script: vec![],
+            block_height: Some(100),
+            is_change: false,
+        };
+        mgr.wallet_mut().add_utxo(utxo);
+        assert!(mgr.max_spendable() > 0);
+        assert!(mgr.max_spendable() < 100_000);
     }
 }

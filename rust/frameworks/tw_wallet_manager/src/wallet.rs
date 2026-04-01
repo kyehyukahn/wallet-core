@@ -242,6 +242,48 @@ impl<C: WalletChain> Wallet<C> {
         self.txs.clear();
         self.wallet_height = 0;
     }
+
+    /// Estimate fee for sending a given amount.
+    /// breadwallet-core BRWalletFeeForTxAmount equivalent.
+    pub fn estimate_fee_for_amount(&self, amount: u64) -> u64 {
+        let fee_per_kb = self.fee_rate;
+        let fee_per_byte = fee_per_kb.div_ceil(1000);
+        let sorted_utxos = self.utxos.sorted_by_value_desc();
+        let mut input_total: u64 = 0;
+        let mut input_count: usize = 0;
+        for utxo in &sorted_utxos {
+            input_total += utxo.value;
+            input_count += 1;
+            let estimated_size = 10 + input_count * 148 + 2 * 34;
+            let estimated_fee = (estimated_size as u64) * fee_per_byte;
+            if input_total >= amount + estimated_fee {
+                return estimated_fee;
+            }
+        }
+        let estimated_size = 10 + input_count * 148 + 34;
+        (estimated_size as u64) * fee_per_byte
+    }
+
+    /// Maximum sendable amount after fees.
+    /// breadwallet-core BRWalletMaxOutputAmount equivalent.
+    pub fn max_spendable(&self) -> u64 {
+        let total = self.balance();
+        if total == 0 {
+            return 0;
+        }
+        let fee_per_byte = self.fee_rate.div_ceil(1000);
+        let utxo_count = self.utxo_count();
+        let estimated_size = 10 + utxo_count * 148 + 34;
+        let estimated_fee = (estimated_size as u64) * fee_per_byte;
+        total.saturating_sub(estimated_fee)
+    }
+
+    /// Minimum economically viable output amount.
+    /// breadwallet-core BRWalletMinOutputAmount equivalent.
+    pub fn min_output_amount(&self) -> u64 {
+        let calculated = self.fee_rate * 3 * (34 + 148) / 1000;
+        std::cmp::max(calculated, 546)
+    }
 }
 
 #[cfg(test)]
@@ -369,5 +411,51 @@ mod tests {
         assert_eq!(state.fee_rate, 20_000);
         assert!(state.external_cursor > 0);
         assert!(state.internal_cursor > 0);
+    }
+
+    #[test]
+    fn test_estimate_fee_for_amount() {
+        let mut wallet = Wallet::new(test_xpub(), BitcoinMainnetWallet).unwrap();
+        wallet.add_utxo(make_utxo(0, 100_000, Some(100)));
+        wallet.add_utxo(make_utxo(1, 200_000, Some(101)));
+        wallet.add_utxo(make_utxo(2, 50_000, Some(102)));
+
+        let amount = 10_000;
+        let fee = wallet.estimate_fee_for_amount(amount);
+        assert!(fee > 0);
+        assert!(fee < amount);
+    }
+
+    #[test]
+    fn test_max_spendable() {
+        let mut wallet = Wallet::new(test_xpub(), BitcoinMainnetWallet).unwrap();
+        wallet.add_utxo(make_utxo(0, 200_000, Some(100)));
+        wallet.add_utxo(make_utxo(1, 100_000, Some(101)));
+
+        let max = wallet.max_spendable();
+        assert!(max > 290_000);
+        assert!(max < 300_000);
+    }
+
+    #[test]
+    fn test_max_spendable_empty_wallet() {
+        let wallet = Wallet::new(test_xpub(), BitcoinMainnetWallet).unwrap();
+        assert_eq!(wallet.max_spendable(), 0);
+    }
+
+    #[test]
+    fn test_min_output_amount() {
+        let wallet = Wallet::new(test_xpub(), BitcoinMainnetWallet).unwrap();
+        // Default fee rate is 10_000 sat/kB.
+        // calculated = 10_000 * 3 * (34 + 148) / 1000 = 5460
+        assert_eq!(wallet.min_output_amount(), 5460);
+    }
+
+    #[test]
+    fn test_min_output_amount_low_fee() {
+        let mut wallet = Wallet::new(test_xpub(), BitcoinMainnetWallet).unwrap();
+        wallet.set_fee_rate(100);
+        // calculated = 100 * 3 * 182 / 1000 = 54 → clamped to 546
+        assert_eq!(wallet.min_output_amount(), 546);
     }
 }
