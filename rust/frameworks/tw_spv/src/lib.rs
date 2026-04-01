@@ -11,4 +11,5 @@ pub mod events;
 pub mod merkle_block;
 pub mod messages;
 pub mod peer;
+pub mod peer_manager;
 pub mod runtime;

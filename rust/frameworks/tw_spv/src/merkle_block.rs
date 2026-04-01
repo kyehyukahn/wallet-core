@@ -1,6 +1,11 @@
 // SPDX-License-Identifier: Apache-2.0
 //
 // Copyright © 2017 Trust Wallet.
+//
+// Portions of this file are derived from breadwallet-core
+// (https://github.com/voisine/breadwallet-core),
+// Copyright (c) 2015 breadwallet LLC, licensed under the MIT License.
+// See LICENSE-3RD-PARTY.txt for the full license text.
 
 use crate::chain::BlockHeader;
 use crate::decode::{Decodable, Reader};
