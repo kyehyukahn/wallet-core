@@ -12,3 +12,7 @@ pub mod solana;
 pub mod ton;
 #[cfg(feature = "utils")]
 pub mod utils;
+#[cfg(feature = "spv")]
+pub mod wallet_manager;
+#[cfg(feature = "spv")]
+pub mod spv;

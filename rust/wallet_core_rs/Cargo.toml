@@ -17,6 +17,7 @@ default = [
     "solana",
     "ton",
     "utils",
+    "spv",
 ]
 any-coin = ["tw_any_coin"]
 bitcoin = ["tw_bitcoin", "tw_coin_registry"]
@@ -33,6 +34,7 @@ utils = [
     "tw_proto",
     "uuid"
 ]
+spv = ["tw_spv/tokio-runtime", "tw_wallet_manager", "tw_memory"]
 
 [dependencies]
 bitreader = "0.3.8"
@@ -51,4 +53,6 @@ tw_misc = { path = "../tw_misc" }
 tw_proto = { path = "../tw_proto", optional = true }
 tw_solana = { path = "../chains/tw_solana", optional = true }
 tw_ton = { path = "../chains/tw_ton", optional = true }
+tw_spv = { path = "../frameworks/tw_spv", optional = true }
+tw_wallet_manager = { path = "../frameworks/tw_wallet_manager", optional = true }
 uuid = { version = "1.7", features = ["v4"], optional = true }
