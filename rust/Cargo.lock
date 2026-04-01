@@ -2745,6 +2745,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "tw_wallet_manager"
+version = "0.1.0"
+dependencies = [
+ "bitcoin",
+ "tw_encoding",
+ "tw_hash",
+ "tw_spv",
+ "tw_utxo",
+]
+
+[[package]]
 name = "tw_zcash"
 version = "0.1.0"
 dependencies = [

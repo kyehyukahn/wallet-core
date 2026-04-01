@@ -1,0 +1,13 @@
+[package]
+name = "tw_wallet_manager"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+bitcoin = { version = "0.30.0", features = ["rand-std"] }
+tw_hash = { path = "../../tw_hash" }
+tw_encoding = { path = "../../tw_encoding" }
+tw_utxo = { path = "../tw_utxo" }
+tw_spv = { path = "../tw_spv" }
+
+[dev-dependencies]
