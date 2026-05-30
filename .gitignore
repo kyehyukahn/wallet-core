@@ -96,3 +96,6 @@ build/release-*
 
 # npm-package native artifacts downloaded by postinstall
 npm-package/native/
+
+# Kotlin/Gradle build outputs (e.g. kotlin/build-logic/bin/main)
+kotlin/**/bin/
