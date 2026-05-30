@@ -1,0 +1,65 @@
+#!/bin/bash
+#
+# Package the built native artifacts into a release directory ready for
+# `gh release create` upload.
+#
+# Usage:
+#   tools/release-pack <version>      # e.g. tools/release-pack 0.1.0
+#
+# Prerequisites (all built ahead of time):
+#   - build/ios-frameworks/WalletCoreCommon.xcframework   (tools/ios-build)
+#   - swift/WalletCoreRs.xcframework                       (tools/generate-files ios)
+#   - build/wallet-core.aar                                (tools/android-build)
+#
+# Output:
+#   build/release-v<version>/
+#     ├── WalletCoreCommon.xcframework.zip
+#     ├── WalletCoreRs.xcframework.zip
+#     ├── wallet-core.aar
+#     └── SHA256SUMS
+
+set -e
+
+VERSION=$1
+if [[ -z "$VERSION" ]]; then
+    echo "usage: $0 <version>   (e.g. $0 0.1.0)" >&2
+    exit 1
+fi
+
+OUT="build/release-v${VERSION}"
+COMMON_XCF="build/ios-frameworks/WalletCoreCommon.xcframework"
+RS_XCF="swift/WalletCoreRs.xcframework"
+AAR="build/wallet-core.aar"
+
+for src in "$COMMON_XCF" "$RS_XCF" "$AAR"; do
+    if [[ ! -e "$src" ]]; then
+        echo "ERROR: required input missing: $src" >&2
+        echo "Run the platform builds first (tools/generate-files ios, tools/ios-build, tools/android-build)." >&2
+        exit 2
+    fi
+done
+
+rm -rf "$OUT"
+mkdir -p "$OUT"
+
+echo "Packaging iOS xcframeworks (ditto)..."
+ditto -c -k --sequesterRsrc --keepParent "$COMMON_XCF" "$OUT/WalletCoreCommon.xcframework.zip"
+ditto -c -k --sequesterRsrc --keepParent "$RS_XCF"     "$OUT/WalletCoreRs.xcframework.zip"
+
+echo "Copying Android AAR..."
+cp "$AAR" "$OUT/wallet-core.aar"
+
+echo "Computing SHA-256 checksums..."
+( cd "$OUT" && shasum -a 256 *.zip *.aar > SHA256SUMS )
+
+echo
+echo "Release artifacts ready in $OUT:"
+ls -lh "$OUT"
+echo
+echo "Next steps:"
+echo "  git tag -a v${VERSION} -m \"v${VERSION}\""
+echo "  git push origin v${VERSION}"
+echo "  gh release create v${VERSION} --target \$(git rev-parse --abbrev-ref HEAD) \\"
+echo "      --title \"v${VERSION}\" --notes-file docs/release-notes/v${VERSION}.md \\"
+echo "      ${OUT}/*"
+echo "  cd npm-package && npm publish"

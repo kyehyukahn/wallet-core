@@ -90,3 +90,9 @@ samples/cpp/sample
 
 # Kotlin
 kotlin/.kotlin
+
+# Release artifact bundles produced by tools/release-pack
+build/release-*
+
+# npm-package native artifacts downloaded by postinstall
+npm-package/native/
