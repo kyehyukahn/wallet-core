@@ -24,21 +24,32 @@ postinstall script and a few KB of JavaScript path resolvers.
 
 ## Installation
 
+GitHub Packages npm registry requires authentication for **every** install
+(unlike npmjs.org), regardless of package visibility. Both lines below are
+required in the consumer project's `.npmrc`:
+
 ```bash
-# Configure registry once (project root .npmrc)
+# Configure registry + auth (project root .npmrc)
 cat >> .npmrc <<EOF
 @kyehyukahn:registry=https://npm.pkg.github.com
+//npm.pkg.github.com/:_authToken=\${GITHUB_TOKEN}
 EOF
+
+# Export a token with at least `read:packages` scope
+export GITHUB_TOKEN=$(gh auth token)   # or use a Personal Access Token
 
 # Install. The postinstall hook downloads native artifacts.
 pnpm add @kyehyukahn/wallet-core@^0.1.0
 # or: npm install / yarn add
 ```
 
-For CI, set `GITHUB_TOKEN` (`read:packages` is enough) and add:
-```
-//npm.pkg.github.com/:_authToken=${GITHUB_TOKEN}
-```
+For CI, `secrets.GITHUB_TOKEN` is sufficient (already has `read:packages`).
+
+Note: the Release assets themselves (`.zip`, `.aar`, `SHA256SUMS`) are
+hosted on a public repo and are downloaded anonymously — only the npm
+registry call needs the token. Do **not** commit `.npmrc` with a literal
+token; use the `${GITHUB_TOKEN}` indirection or add `.npmrc` to
+`.gitignore`.
 
 To skip the download (e.g., when restoring from CI cache):
 ```bash
