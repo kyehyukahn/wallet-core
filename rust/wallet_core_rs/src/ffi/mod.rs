@@ -8,11 +8,11 @@ pub mod bitcoin;
 pub mod ethereum;
 #[cfg(feature = "solana")]
 pub mod solana;
+#[cfg(feature = "spv")]
+pub mod spv;
 #[cfg(feature = "ton")]
 pub mod ton;
 #[cfg(feature = "utils")]
 pub mod utils;
 #[cfg(feature = "spv")]
 pub mod wallet_manager;
-#[cfg(feature = "spv")]
-pub mod spv;
