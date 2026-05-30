@@ -1,0 +1,166 @@
+name: Release
+
+# Build native artifacts (iOS xcframeworks + Android AAR), attach them
+# to a GitHub Release, and publish the matching @kyehyukahn/wallet-core
+# npm wrapper to GitHub Packages.
+#
+# See docs/612.design-ci-release-automation.md for the design rationale
+# and docs/610.distribution-npm-github-packages.md for the broader
+# distribution procedure.
+
+on:
+  push:
+    tags: ['v*.*.*']
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Tag to release (must already exist, e.g. v0.1.1)'
+        required: true
+
+permissions:
+  contents: write
+  packages: write
+
+concurrency:
+  group: release-${{ github.event.inputs.tag || github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  release:
+    runs-on: macos-15-xlarge
+    steps:
+      - name: Resolve tag and version
+        id: resolve
+        run: |
+          if [[ -n "${{ github.event.inputs.tag }}" ]]; then
+            TAG="${{ github.event.inputs.tag }}"
+          else
+            TAG="${GITHUB_REF#refs/tags/}"
+          fi
+          if [[ ! "$TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "::error::tag must match vMAJOR.MINOR.PATCH (got: $TAG)"
+            exit 1
+          fi
+          VERSION="${TAG#v}"
+          echo "tag=$TAG"         >> "$GITHUB_OUTPUT"
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          echo "Resolved: tag=$TAG version=$VERSION"
+
+      - name: Checkout tag
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ steps.resolve.outputs.tag }}
+          fetch-depth: 1
+
+      - name: Verify package.json version matches tag
+        run: |
+          PKG_VERSION=$(node -p "require('./npm-package/package.json').version")
+          if [[ "$PKG_VERSION" != "${{ steps.resolve.outputs.version }}" ]]; then
+            echo "::error::npm-package/package.json version ($PKG_VERSION) does not match tag (${{ steps.resolve.outputs.version }})."
+            echo "::error::Bump npm-package/package.json before tagging. See docs/610.distribution-npm-github-packages.md."
+            exit 1
+          fi
+          echo "OK: npm-package/package.json version = $PKG_VERSION"
+
+      - name: Verify release notes exist
+        run: |
+          NOTES="docs/release-notes/${{ steps.resolve.outputs.tag }}.md"
+          if [[ ! -f "$NOTES" ]]; then
+            echo "::error::release notes missing: $NOTES"
+            echo "::error::Create the release notes file before tagging."
+            exit 1
+          fi
+          echo "OK: $NOTES present"
+
+      - name: Install system dependencies (mac)
+        run: tools/install-sys-dependencies-mac
+
+      - name: Cache Rust
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: rust
+
+      - name: Install Rust dependencies
+        run: tools/install-rust-dependencies
+
+      - name: Cache internal C++ dependencies (build/local)
+        id: internal_cache
+        uses: actions/cache@v4
+        with:
+          path: build/local
+          key: ${{ runner.os }}-${{ runner.arch }}-internal-${{ hashFiles('tools/install-dependencies', 'tools/dependencies-version') }}
+
+      - name: Install internal C++ dependencies
+        if: steps.internal_cache.outputs.cache-hit != 'true'
+        run: tools/install-dependencies
+
+      - name: Install Android CMake 3.18.1 (pinned by android/wallet-core/build.gradle)
+        run: |
+          "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" "cmake;3.18.1"
+
+      - name: Generate iOS files (rust ios libs + WalletCoreRs.xcframework)
+        run: tools/generate-files ios
+
+      - name: Build iOS xcframework (WalletCoreCommon)
+        run: tools/ios-build
+
+      - name: Generate Android files (rust android libs)
+        run: tools/generate-files android
+
+      - name: Build Android AAR
+        run: tools/android-build
+
+      - name: Pack release artifacts
+        run: tools/release-pack ${{ steps.resolve.outputs.version }}
+
+      - name: Show packed artifacts + checksums
+        run: |
+          ls -lh build/release-v${{ steps.resolve.outputs.version }}/
+          echo
+          cat build/release-v${{ steps.resolve.outputs.version }}/SHA256SUMS
+
+      - name: Create / update GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ steps.resolve.outputs.tag }}
+          name: ${{ steps.resolve.outputs.tag }}
+          body_path: docs/release-notes/${{ steps.resolve.outputs.tag }}.md
+          files: build/release-v${{ steps.resolve.outputs.version }}/*
+          fail_on_unmatched_files: true
+
+      - name: Setup Node for GitHub Packages
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          registry-url: 'https://npm.pkg.github.com'
+          scope: '@kyehyukahn'
+
+      - name: npm publish @kyehyukahn/wallet-core
+        working-directory: npm-package
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: npm publish
+
+      - name: Job summary
+        if: always()
+        run: |
+          TAG=${{ steps.resolve.outputs.tag }}
+          VERSION=${{ steps.resolve.outputs.version }}
+          {
+            echo "## Release ${TAG}"
+            echo
+            echo "- **GitHub Release**: https://github.com/${{ github.repository }}/releases/tag/${TAG}"
+            echo "- **npm package**: https://github.com/${{ github.repository }}/pkgs/npm/wallet-core"
+            echo
+            echo "### Artifacts"
+            echo
+            echo '```'
+            ls -lh build/release-v${VERSION}/ 2>/dev/null || echo "(release-pack output missing — see step logs)"
+            echo '```'
+            echo
+            echo "### SHA-256"
+            echo
+            echo '```'
+            cat build/release-v${VERSION}/SHA256SUMS 2>/dev/null || echo "(SHA256SUMS missing — see step logs)"
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
