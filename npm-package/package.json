@@ -1,0 +1,38 @@
+{
+  "name": "@kyehyukahn/wallet-core",
+  "version": "0.1.0",
+  "description": "Native artifact bundle for the kyehyukahn/wallet-core fork (iOS xcframeworks + Android AAR). Thin wrapper that downloads the matching GitHub Release on install.",
+  "main": "index.js",
+  "types": "index.d.ts",
+  "scripts": {
+    "postinstall": "node postinstall.js"
+  },
+  "files": [
+    "postinstall.js",
+    "index.js",
+    "index.d.ts",
+    "README.md"
+  ],
+  "keywords": [
+    "wallet-core",
+    "trustwallet",
+    "ios",
+    "android",
+    "react-native",
+    "xcframework",
+    "aar"
+  ],
+  "engines": {
+    "node": ">=18"
+  },
+  "publishConfig": {
+    "registry": "https://npm.pkg.github.com",
+    "access": "public"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/kyehyukahn/wallet-core.git",
+    "directory": "npm-package"
+  },
+  "license": "MIT"
+}
