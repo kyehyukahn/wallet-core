@@ -4,25 +4,29 @@
 # `gh release create` upload.
 #
 # Usage:
-#   tools/release-pack <version>      # e.g. tools/release-pack 0.1.0
+#   tools/release-pack <version>      # e.g. tools/release-pack 0.2.0
 #
 # Prerequisites (all built ahead of time):
-#   - build/ios-frameworks/WalletCoreCommon.xcframework   (tools/ios-build)
-#   - swift/WalletCoreRs.xcframework                       (tools/generate-files ios)
-#   - build/wallet-core.aar                                (tools/android-build)
+#   - build/ios-frameworks/WalletCoreCommon.xcframework            (tools/ios-build)
+#   - swift/WalletCoreRs.xcframework                                (tools/generate-files ios)
+#   - build/wallet-core.aar                                         (tools/android-build)
+#   - android/wallet-core-proto/build/libs/wallet-core-proto.jar    (./gradlew :wallet-core-proto:jar, from v0.2.0)
+#   - swift/Sources/                                                (codegen output, always present)
 #
 # Output:
 #   build/release-v<version>/
 #     ├── WalletCoreCommon.xcframework.zip
 #     ├── WalletCoreRs.xcframework.zip
 #     ├── wallet-core.aar
+#     ├── wallet-core-proto.jar          (v0.2.0+: Java protobuf-generated SigningInput types)
+#     ├── swift-sources.tar.gz           (v0.2.0+: Swift protobuf + wrapper sources for podspec source_files)
 #     └── SHA256SUMS
 
 set -e
 
 VERSION=$1
 if [[ -z "$VERSION" ]]; then
-    echo "usage: $0 <version>   (e.g. $0 0.1.0)" >&2
+    echo "usage: $0 <version>   (e.g. $0 0.2.0)" >&2
     exit 1
 fi
 
@@ -30,11 +34,14 @@ OUT="build/release-v${VERSION}"
 COMMON_XCF="build/ios-frameworks/WalletCoreCommon.xcframework"
 RS_XCF="swift/WalletCoreRs.xcframework"
 AAR="build/wallet-core.aar"
+PROTO_JAR="android/wallet-core-proto/build/libs/wallet-core-proto.jar"
+SWIFT_SRC_DIR="swift/Sources"
 
-for src in "$COMMON_XCF" "$RS_XCF" "$AAR"; do
+for src in "$COMMON_XCF" "$RS_XCF" "$AAR" "$PROTO_JAR" "$SWIFT_SRC_DIR"; do
     if [[ ! -e "$src" ]]; then
         echo "ERROR: required input missing: $src" >&2
-        echo "Run the platform builds first (tools/generate-files ios, tools/ios-build, tools/android-build)." >&2
+        echo "Run the platform builds first (tools/generate-files ios, tools/ios-build," >&2
+        echo "tools/android-build, ./gradlew :wallet-core-proto:jar)." >&2
         exit 2
     fi
 done
@@ -49,8 +56,17 @@ ditto -c -k --sequesterRsrc --keepParent "$RS_XCF"     "$OUT/WalletCoreRs.xcfram
 echo "Copying Android AAR..."
 cp "$AAR" "$OUT/wallet-core.aar"
 
+echo "Copying Android proto JAR..."
+cp "$PROTO_JAR" "$OUT/wallet-core-proto.jar"
+
+echo "Packaging Swift sources (full Sources/ tree)..."
+# Includes top-level (AnySigner.swift, KeyStore.swift, Wallet.swift, etc.) AND
+# Generated/ (HDWallet, PrivateKey, Enums/, Protobuf/*) AND Extensions/, Types/.
+# Consumers reach into native/ios/Sources/**/*.swift from podspec source_files.
+tar -czf "$OUT/swift-sources.tar.gz" -C swift Sources
+
 echo "Computing SHA-256 checksums..."
-( cd "$OUT" && shasum -a 256 *.zip *.aar > SHA256SUMS )
+( cd "$OUT" && shasum -a 256 *.zip *.aar *.jar *.tar.gz > SHA256SUMS )
 
 echo
 echo "Release artifacts ready in $OUT:"
