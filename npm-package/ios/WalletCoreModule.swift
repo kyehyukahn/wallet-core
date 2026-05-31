@@ -41,8 +41,13 @@ public class WalletCoreModule: Module {
       return AnyAddress(publicKey: publicKey, coin: coinType).description
     }
 
+    // ── EVM (chains/EvmSigning.swift) ──
+
+    AsyncFunction("evmSignTransaction") { (tx: [String: Any], mnemonic: String, path: String) -> String in
+      try EvmSigning.signTransaction(tx: tx, mnemonic: mnemonic, derivationPath: path)
+    }
+
     // ── per-chain signing methods are added by chains/<Chain>Signing.swift ──
-    // commit 6: EVM (evmSignTransaction)
     // commit 7: Solana (solanaSignTransfer)
   }
 }
