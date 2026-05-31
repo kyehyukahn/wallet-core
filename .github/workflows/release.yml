@@ -110,6 +110,13 @@ jobs:
       - name: Build Android AAR
         run: tools/android-build
 
+      - name: Build Android wallet-core-proto JAR
+        # v0.2.0+: Java protobuf-generated SigningInput types. Built as a
+        # separate java-library module (not packaged in the AAR) so it can be
+        # consumed standalone by the Expo Module Kotlin code.
+        working-directory: android
+        run: ./gradlew :wallet-core-proto:jar
+
       - name: Pack release artifacts
         run: tools/release-pack ${{ steps.resolve.outputs.version }}
 
@@ -134,6 +141,20 @@ jobs:
           node-version: '20'
           registry-url: 'https://npm.pkg.github.com'
           scope: '@kyehyukahn'
+
+      - name: Build TypeScript sources (v0.2.0+)
+        # v0.2.0 introduced TS sources (src/, evm/, solana/) that ship as
+        # compiled JS+d.ts under dist/. The publish step relies on dist/
+        # existing per package.json "files".
+        working-directory: npm-package
+        run: |
+          if [[ -f tsconfig.json ]]; then
+            npm ci
+            npm run build
+            test -d dist || { echo "::error::tsc build produced no dist/"; exit 1; }
+          else
+            echo "::notice::no tsconfig.json — skipping TS build (pre-v0.2.0 package layout)"
+          fi
 
       - name: npm publish @kyehyukahn/wallet-core
         working-directory: npm-package
