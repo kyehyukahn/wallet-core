@@ -60,10 +60,28 @@ OptionParser.new do |opts|
   end
 end.parse!
 
+# Headers that the Ruby parser cannot handle yet (uses primitive types
+# the parser doesn't recognize, e.g. `double` / `float`). These describe
+# kyehyukahn/wallet-core fork SPV / wallet-manager APIs that are consumed
+# directly via Rust + C FFI in tw_spv / tw_wallet_manager, not via the
+# Swift/Java/Kotlin wrappers this codegen produces — so skipping them
+# here only loses unused wrapper code.
+#
+# Fix path: add :double / :float to codegen/lib/type_decl.rb and each
+# language helper's primitive_type / type methods, then remove this skip.
+SKIP_HEADERS = %w[
+  TWBitcoinSpvSync.h
+  TWBitcoinWalletManager.h
+].freeze
+
 entities = []
 files = []
 Dir.foreach(options.input) do |item|
   next if ['.', '..', '.DS_Store'].include?(item)
+  if SKIP_HEADERS.include?(item)
+    warn "codegen: skipping #{item} (parser limitation — accessed via Rust C FFI instead)"
+    next
+  end
 
   file_path = File.expand_path(File.join(options.input, item))
   entity = Parser.new(path: file_path).parse
