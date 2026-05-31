@@ -206,3 +206,58 @@ cd codegen-v2 && cargo run -- [swift | cpp | new-blockchain <name> | new-evmchai
 | iOS / Swift | `swift/Tests/` |
 
 C++ unit tests live under `tests/chains/{Blockchain}/` and are typically organized by functionality (for example, `TWBitcoinSigningTests.cpp`, `TWBitcoinAddressTests.cpp`, `TWBitcoinScriptTests.cpp`), rather than following a single strict filename pattern like `TW{Blockchain}Tests.cpp`.
+
+---
+
+## Role: wallet-core developer (cirqle integration track)
+
+This repository is consumed by the **cirqle-mobile** RN app via the `@kyehyukahn/wallet-core` npm package (`npm-package/`). When working in this repo as the wallet-core developer role:
+
+**Owned:**
+- `npm-package/` (Expo Module sources, TS API, postinstall, package.json/exports)
+- `tools/release-pack`, `.github/workflows/release.yml`, `docs/release-notes/`
+- `codegen/`, `swift/Sources/`, `android/wallet-core-proto/`
+- Version tagging + GitHub releases + `npm publish`
+
+**Out of scope (do not touch):**
+- The cirqle-mobile repo (`~/Develops/P_CirQle/cirqle-mobile/`). Request changes via the shared inbox.
+- Cross-repo design docs (live in `cirqle-mobile/docs/native/12x.*` and are owned by the coordinator).
+
+### Coordination protocol
+
+Shared workspace: `~/.claude/shared/cirqle-wallet/` (see its `README.md` first).
+
+**At session start:**
+1. `cat ~/.claude/shared/cirqle-wallet/STATUS.md`
+2. `ls ~/.claude/shared/cirqle-wallet/INBOX/to-wallet-core/` — process anything there
+3. Run the standard wallet-core verification (`tools/build-and-test` or as needed for the task)
+
+**On every published release:**
+1. Write `~/.claude/shared/cirqle-wallet/CONTRACTS/wallet-core-v<version>-api.md` — the frozen API surface for that version
+2. Drop `~/.claude/shared/cirqle-wallet/INBOX/to-cirqle/<UTC-timestamp>-v<version>-published.md` with verification status + migration notes
+3. Update your section of `STATUS.md`
+
+**When you finish a handoff item:**
+- Move the file from `INBOX/to-wallet-core/` into `ARCHIVE/<year>/<month>/`.
+
+**When you need cirqle-mobile to do something:**
+- Drop a request in `INBOX/to-cirqle/`. Don't reach into that repo directly.
+
+**When escalating:**
+- Drop a request in `INBOX/to-coordinator/` and stop work on the blocked item.
+
+### Branch policy
+
+- `main` is for tagged releases only.
+- `dev` is the integration branch. Most work lands here via fast-forward from `feature/<topic>` branches.
+- `feature/v<version>-package` is the canonical name for release-prep branches.
+- Tags are reserved for releases that match `npm-package/package.json` version. CI verifies this match before building.
+
+### When CI fails
+
+The release pipeline is `.github/workflows/release.yml` triggered on `tags: ['v*.*.*']` push (or `workflow_dispatch` with an existing tag input). Before fixing, ask:
+1. Is this a v0.2.0+ wallet-core regression (Swift / Kotlin / TS / new build step)? Fix in code and re-tag.
+2. Is this a pre-existing fork issue surfaced for the first time (e.g. codegen Ruby parser doesn't know a primitive)? Document in commit + fix narrowly.
+3. Is this infra (billing, runner availability)? Switch runner or escalate.
+
+Re-tag the same version (`git tag -d v<X> && git push origin :refs/tags/v<X> && git tag -a v<X> -m "v<X>" && git push origin v<X>`) only before any consumer has pulled it. If consumers might have it, bump to the next patch.
