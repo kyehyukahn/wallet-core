@@ -2,11 +2,11 @@ require 'json'
 
 package = JSON.parse(File.read(File.join(__dir__, '..', 'package.json')))
 
-# Resolve where this package lives on disk. When consumed via npm + autolinking
-# the file lies under node_modules/@kyehyukahn/wallet-core/ios/, and the native
-# binaries + Swift sources are under ../native/ios/ (postinstall output).
-package_root = File.expand_path('..', __dir__)
-native_ios   = File.join(package_root, 'native', 'ios')
+# The podspec lives at <pkg>/ios/, the postinstall-downloaded native artifacts
+# (xcframeworks + Swift sources) live at <pkg>/native/ios/. CocoaPods resolves
+# file patterns relative to the podspec directory, so reach the native tree
+# with `../native/ios/...`. Absolute paths (via File.expand_path/__dir__) are
+# rejected by CocoaPods file-pattern validation.
 
 Pod::Spec.new do |s|
   s.name             = 'WalletCoreModule'
@@ -29,8 +29,8 @@ Pod::Spec.new do |s|
 
   # Native binaries downloaded by postinstall.
   s.vendored_frameworks = [
-    File.join(native_ios, 'WalletCoreCommon.xcframework'),
-    File.join(native_ios, 'WalletCoreRs.xcframework'),
+    '../native/ios/WalletCoreCommon.xcframework',
+    '../native/ios/WalletCoreRs.xcframework',
   ]
 
   # Compile the Expo Module's own .swift files alongside the wallet-core
@@ -40,6 +40,6 @@ Pod::Spec.new do |s|
   s.source_files = [
     '*.swift',
     'chains/*.swift',
-    File.join(native_ios, 'Sources', '**', '*.swift'),
+    '../native/ios/Sources/**/*.swift',
   ]
 end
