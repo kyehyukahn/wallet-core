@@ -1,0 +1,56 @@
+apply plugin: 'com.android.library'
+apply plugin: 'kotlin-android'
+apply plugin: 'expo-module-gradle-plugin'
+
+group = 'expo.modules.walletcore'
+version = '0.1.0'
+
+android {
+    namespace 'expo.modules.walletcore'
+    compileSdk 35
+
+    defaultConfig {
+        minSdkVersion 23
+        targetSdkVersion 35
+    }
+
+    compileOptions {
+        sourceCompatibility JavaVersion.VERSION_17
+        targetCompatibility JavaVersion.VERSION_17
+    }
+
+    kotlinOptions {
+        jvmTarget = '17'
+    }
+
+    sourceSets {
+        main {
+            java {
+                srcDirs += ['src/main/java']
+            }
+        }
+    }
+}
+
+// projectDir = node_modules/@kyehyukahn/wallet-core/android/
+// Native artifacts are downloaded by postinstall to ../native/android/.
+def nativeAndroidDir = new File(projectDir.parentFile, 'native/android')
+
+dependencies {
+    implementation files("${nativeAndroidDir}/wallet-core.aar")
+    implementation files("${nativeAndroidDir}/wallet-core-proto.jar")
+    // Required at runtime by wallet-core-proto.jar (it uses
+    // 'api com.google.protobuf:protobuf-javalite:3.22.3' so this is
+    // transitive, but we list it explicitly for clarity + Gradle conflict
+    // resolution).
+    implementation 'com.google.protobuf:protobuf-javalite:3.22.3'
+}
+
+// Some consumer apps pull a different protobuf-java/javalite version via
+// other dependencies. Force our version to avoid duplicate class errors at
+// dex / R8 time.
+configurations.all {
+    resolutionStrategy {
+        force 'com.google.protobuf:protobuf-javalite:3.22.3'
+    }
+}

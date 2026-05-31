@@ -1,29 +1,62 @@
 {
   "name": "@kyehyukahn/wallet-core",
   "version": "0.1.0",
-  "description": "Native artifact bundle for the kyehyukahn/wallet-core fork (iOS xcframeworks + Android AAR). Thin wrapper that downloads the matching GitHub Release on install.",
-  "main": "index.js",
-  "types": "index.d.ts",
+  "description": "Native wallet-core for React Native / Expo: bundles the kyehyukahn/wallet-core fork's iOS xcframeworks + Android AAR + Swift sources + Java protobuf jar, plus a self-contained Expo Module with chain-agnostic TS API and per-chain subpaths (EVM, Solana).",
+  "main": "dist/src/index.js",
+  "types": "dist/src/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/src/index.d.ts",
+      "default": "./dist/src/index.js"
+    },
+    "./evm": {
+      "types": "./dist/evm/index.d.ts",
+      "default": "./dist/evm/index.js"
+    },
+    "./solana": {
+      "types": "./dist/solana/index.d.ts",
+      "default": "./dist/solana/index.js"
+    },
+    "./expo-module.config.json": "./expo-module.config.json",
+    "./package.json": "./package.json"
+  },
   "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "clean": "rm -rf dist",
     "postinstall": "node postinstall.js"
   },
   "files": [
+    "dist",
+    "ios",
+    "android",
+    "expo-module.config.json",
     "postinstall.js",
-    "index.js",
-    "index.d.ts",
     "README.md"
   ],
   "keywords": [
     "wallet-core",
     "trustwallet",
+    "expo-module",
+    "react-native",
     "ios",
     "android",
-    "react-native",
-    "xcframework",
-    "aar"
+    "ethereum",
+    "solana",
+    "evm",
+    "hdwallet",
+    "bip39",
+    "bip44"
   ],
   "engines": {
     "node": ">=18"
+  },
+  "peerDependencies": {
+    "expo": ">=51",
+    "expo-modules-core": "*",
+    "react-native": ">=0.74"
+  },
+  "devDependencies": {
+    "typescript": "^5.4.0"
   },
   "publishConfig": {
     "registry": "https://npm.pkg.github.com",
