@@ -27,7 +27,12 @@ concurrency:
 
 jobs:
   release:
-    runs-on: macos-15-xlarge
+    # macos-15 standard (M2, 3-core, 7 GB) is free for public repos. The
+    # xlarge variant (M2 Pro, 7-core, 14 GB) is billed even on public repos
+    # and previously blocked v0.2.0 on a billing/spending limit. Standard is
+    # slower but still ships Xcode 16 — sufficient for the iOS + Android
+    # + Rust + tsc pipeline.
+    runs-on: macos-15
     steps:
       - name: Resolve tag and version
         id: resolve
