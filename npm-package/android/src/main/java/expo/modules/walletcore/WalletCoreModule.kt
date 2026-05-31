@@ -3,6 +3,7 @@ package expo.modules.walletcore
 import expo.modules.kotlin.modules.Module
 import expo.modules.kotlin.modules.ModuleDefinition
 import expo.modules.walletcore.chains.EvmSigning
+import expo.modules.walletcore.chains.SolanaSigning
 import wallet.core.jni.AnyAddress
 import wallet.core.jni.CoinType
 import wallet.core.jni.CoinTypeConfiguration
@@ -46,8 +47,11 @@ class WalletCoreModule : Module() {
             EvmSigning.signTransaction(tx, mnemonic, path)
         }
 
-        // ── per-chain signing methods are added by chains/<Chain>Signing.kt ──
-        // commit 7: Solana (solanaSignTransfer)
+        // ── Solana (chains/SolanaSigning.kt) ──
+
+        AsyncFunction("solanaSignTransfer") { tx: Map<String, Any?>, mnemonic: String, path: String ->
+            SolanaSigning.signTransfer(tx, mnemonic, path)
+        }
     }
 }
 

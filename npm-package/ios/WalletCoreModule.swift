@@ -47,8 +47,11 @@ public class WalletCoreModule: Module {
       try EvmSigning.signTransaction(tx: tx, mnemonic: mnemonic, derivationPath: path)
     }
 
-    // ── per-chain signing methods are added by chains/<Chain>Signing.swift ──
-    // commit 7: Solana (solanaSignTransfer)
+    // ── Solana (chains/SolanaSigning.swift) ──
+
+    AsyncFunction("solanaSignTransfer") { (tx: [String: Any], mnemonic: String, path: String) -> String in
+      try SolanaSigning.signTransfer(tx: tx, mnemonic: mnemonic, derivationPath: path)
+    }
   }
 }
 
