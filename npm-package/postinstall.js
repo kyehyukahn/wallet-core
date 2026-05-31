@@ -33,10 +33,21 @@ const BASE_URL =
   process.env.WALLET_CORE_RELEASE_BASE_URL ||
   `https://github.com/kyehyukahn/wallet-core/releases/download/v${VERSION}`;
 
+// extract:
+//   'unzip' → unzip <src> -d <native/<dest>>
+//   'untar' → tar  -xzf <src> -C <native/<dest>>  (mkdir <dest> first)
+//   'copy'  → copy  <src>     <native/<dest>/<name>>
 const ASSETS = [
-  { name: 'WalletCoreCommon.xcframework.zip', dest: 'ios', unzip: true },
-  { name: 'WalletCoreRs.xcframework.zip',     dest: 'ios', unzip: true },
-  { name: 'wallet-core.aar',                  dest: 'android', unzip: false },
+  { name: 'WalletCoreCommon.xcframework.zip', dest: 'ios',     extract: 'unzip' },
+  { name: 'WalletCoreRs.xcframework.zip',     dest: 'ios',     extract: 'unzip' },
+  { name: 'wallet-core.aar',                  dest: 'android', extract: 'copy'  },
+  // v0.2.0+: Swift sources for the Expo Module podspec to compile alongside
+  // its own .swift files. Untarred so that node_modules/@kyehyukahn/wallet-core/
+  // native/ios/Sources/**/*.swift becomes a stable glob target.
+  { name: 'swift-sources.tar.gz',             dest: 'ios',     extract: 'untar' },
+  // v0.2.0+: Java protobuf-generated SigningInput types for the Expo Module
+  // Kotlin code to build Ethereum.SigningInput / Solana.SigningInput.
+  { name: 'wallet-core-proto.jar',            dest: 'android', extract: 'copy'  },
 ];
 const SUMS_FILE = 'SHA256SUMS';
 
@@ -109,6 +120,14 @@ function unzipTo(zip, destDir) {
   execFileSync('unzip', ['-q', '-o', zip, '-d', destDir], { stdio: 'inherit' });
 }
 
+function untarTo(tarball, destDir) {
+  // BSD tar (macOS) and GNU tar (Linux) both support -xzf with -C destination.
+  // The release-pack step uses `tar -czf` with `-C swift Sources`, so the
+  // archive root is `Sources/`. We strip that prefix so files land directly
+  // under destDir (which is already `native/ios/Sources` by convention).
+  execFileSync('tar', ['-xzf', tarball, '--strip-components=1', '-C', destDir], { stdio: 'inherit' });
+}
+
 async function main() {
   if (process.env.WALLET_CORE_SKIP_DOWNLOAD === '1') {
     log('WALLET_CORE_SKIP_DOWNLOAD=1 — skipping native artifact download.');
@@ -145,13 +164,26 @@ async function main() {
 
   // 3. lay out final native/ tree
   for (const a of ASSETS) {
-    const target = path.join(NATIVE_DIR, a.dest);
-    ensureDir(target);
+    const baseTarget = path.join(NATIVE_DIR, a.dest);
+    ensureDir(baseTarget);
     const staged = path.join(stageDir, a.name);
-    if (a.unzip) {
-      unzipTo(staged, target);
-    } else {
-      fs.copyFileSync(staged, path.join(target, a.name));
+    switch (a.extract) {
+      case 'unzip':
+        unzipTo(staged, baseTarget);
+        break;
+      case 'untar': {
+        // The Swift sources land at native/ios/Sources/ — keep this stable
+        // so podspec source_files glob can hard-code the path.
+        const sourcesDir = path.join(baseTarget, 'Sources');
+        ensureDir(sourcesDir);
+        untarTo(staged, sourcesDir);
+        break;
+      }
+      case 'copy':
+        fs.copyFileSync(staged, path.join(baseTarget, a.name));
+        break;
+      default:
+        die(`unknown extract mode for ${a.name}: ${a.extract}`);
     }
   }
   fs.rmSync(stageDir, { recursive: true, force: true });
