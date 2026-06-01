@@ -65,6 +65,24 @@ echo "Packaging Swift sources (full Sources/ tree)..."
 # Consumers reach into native/ios/Sources/**/*.swift from podspec source_files.
 tar -czf "$OUT/swift-sources.tar.gz" -C swift Sources
 
+# Invariant: the tarball MUST contain raw protoc-generated *.pb.swift files.
+# Their absence means tools/generate-files ios was run without protoc-gen-swift
+# on PATH and only the typealias bridges (+Proto.swift) were produced — every
+# TW_<Chain>_Proto_* symbol referenced by chain code is then unresolved at
+# consumer build time. v0.2.0/0.2.1 shipped exactly this broken state; never
+# again.
+echo "Verifying swift-sources tarball contains *.pb.swift..."
+PB_COUNT=$(tar -tzf "$OUT/swift-sources.tar.gz" | grep -c '\.pb\.swift$' || true)
+if [[ "$PB_COUNT" -lt 1 ]]; then
+    echo "ERROR: swift-sources.tar.gz contains 0 *.pb.swift files." >&2
+    echo "       Run 'tools/generate-files ios' on a host where protoc-gen-swift" >&2
+    echo "       is on PATH (build/local/bin has it), then re-pack." >&2
+    exit 3
+fi
+echo "  OK ($PB_COUNT *.pb.swift entries)"
+tar -tzf "$OUT/swift-sources.tar.gz" | grep '\.pb\.swift$' | grep -E '(Ethereum|Solana|Common)\.pb\.swift$' \
+    || { echo "ERROR: expected Ethereum.pb.swift / Solana.pb.swift / Common.pb.swift in tarball." >&2; exit 3; }
+
 echo "Computing SHA-256 checksums..."
 ( cd "$OUT" && shasum -a 256 *.zip *.aar *.jar *.tar.gz > SHA256SUMS )
 
