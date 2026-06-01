@@ -6,7 +6,6 @@ import expo.modules.walletcore.chains.EvmSigning
 import expo.modules.walletcore.chains.SolanaSigning
 import wallet.core.jni.AnyAddress
 import wallet.core.jni.CoinType
-import wallet.core.jni.CoinTypeConfiguration
 import wallet.core.jni.HDWallet
 import wallet.core.jni.Mnemonic
 
@@ -36,8 +35,10 @@ class WalletCoreModule : Module() {
                 ?: throw WalletCoreError.UnsupportedCoinType(coin)
             val wallet = HDWallet(mnemonic, "")
             val privateKey = wallet.getKey(coinType, path)
-            val pubKeyType = CoinTypeConfiguration.getPublicKeyType(coinType)
-            val publicKey = privateKey.getPublicKeyByType(pubKeyType)
+            // PrivateKey.getPublicKey(coinType) picks the right curve for the
+            // coin internally. CoinTypeConfiguration does not expose
+            // getPublicKeyType.
+            val publicKey = privateKey.getPublicKey(coinType)
             AnyAddress(publicKey, coinType).description()
         }
 

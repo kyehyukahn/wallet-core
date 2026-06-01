@@ -36,8 +36,11 @@ public class WalletCoreModule: Module {
         throw WalletCoreError.unsupportedCoinType(coin)
       }
       let privateKey = wallet.getKey(coin: coinType, derivationPath: path)
-      let pubKeyType = CoinTypeConfiguration.getPublicKeyType(coin: coinType)
-      let publicKey = privateKey.getPublicKeyByType(pubkeyType: pubKeyType)
+      // PrivateKey.getPublicKey(coinType:) picks the right curve for the
+      // coin internally — equivalent to chaining PublicKeyType lookup +
+      // getPublicKeyByType, but the upstream Swift API exposes the direct
+      // form. CoinTypeConfiguration does not expose getPublicKeyType.
+      let publicKey = privateKey.getPublicKey(coinType: coinType)
       return AnyAddress(publicKey: publicKey, coin: coinType).description
     }
 
