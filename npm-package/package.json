@@ -1,6 +1,6 @@
 {
   "name": "@kyehyukahn/wallet-core",
-  "version": "0.2.12",
+  "version": "0.2.13",
   "description": "Native wallet-core for React Native / Expo: bundles the kyehyukahn/wallet-core fork's iOS xcframeworks + Android AAR + Swift sources + Java protobuf jar, plus a self-contained Expo Module with chain-agnostic TS API and per-chain subpaths (EVM, Solana).",
   "main": "dist/src/index.js",
   "types": "dist/src/index.d.ts",

@@ -1,12 +1,11 @@
 apply plugin: 'com.android.library'
 apply plugin: 'kotlin-android'
-apply plugin: 'maven-publish'
 apply plugin: 'expo-module-gradle-plugin'
 
 // Bump in lockstep with npm-package/package.json on each release.
 // Kept as a literal (not parsed from package.json) so Android Studio's
 // Gradle diagnostics don't choke on `groovy.json.JsonSlurper` resolution.
-def package_version = '0.2.12'
+def package_version = '0.2.13'
 
 group = 'expo.modules.walletcore'
 version = package_version
@@ -39,33 +38,11 @@ android {
         }
     }
 
-    // Required by AGP 8+ before publishing.publications can reference
-    // components.release. expo-module-gradle-plugin asks for the 'release'
-    // SoftwareComponent during configure; without singleVariant the component
-    // doesn't exist and the configure phase fails.
-    publishing {
-        singleVariant("release") {
-            withSourcesJar()
-        }
-    }
-}
-
-// Materialise the publishing.publications.release entry AFTER android's
-// release variant has been finalised (the SoftwareComponent is added late
-// in evaluation). Without this, expo-module-gradle-plugin's internal hooks
-// still throw 'SoftwareComponent with name release not found' during
-// configure even when singleVariant is declared above.
-afterEvaluate {
-    publishing {
-        publications {
-            release(MavenPublication) {
-                from components.release
-                groupId = group
-                artifactId = 'wallet-core'
-                version = package_version
-            }
-        }
-    }
+    // NB: do not declare `publishing.singleVariant("release")` here —
+    // expo-module-gradle-plugin already does so on our behalf, and a second
+    // call fails with "Using singleVariant publishing DSL multiple times".
+    // Same applies to `apply plugin: 'maven-publish'` and any explicit
+    // `publishing.publications.release(MavenPublication)` block.
 }
 
 // projectDir = node_modules/@kyehyukahn/wallet-core/android/
