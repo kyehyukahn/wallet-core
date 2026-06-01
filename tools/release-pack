@@ -127,39 +127,74 @@ if [[ -d "$SWIFT_ROOT" ]]; then
 fi
 
 echo "Injecting 'import WalletCoreCommon' so Swift sources can see TW* C symbols (CocoaPods)..."
-# The Swift wrappers in Sources/Generated/ (HDWallet.swift, AnySigner-using
-# files, every TWxxx-using class) reference C functions like
-# TWHDWalletCreate / TWStringDelete / etc. directly. In SwiftPM consumers
-# these symbols are visible because Package.swift declares the C target
-# as a dependency; in CocoaPods consumers we need the Swift module to
-# explicitly `import WalletCoreCommon`, which the codegen output does not
-# emit. We add the import here so the published tarball is CocoaPods-ready.
+# The Swift wrappers in Sources/ (HDWallet.swift, AnySigner-using files,
+# Extensions/*+Extension.swift on TW enums, every TWxxx-using class)
+# reference C functions like TWHDWalletCreate / TWStringDelete / etc.
+# directly. In SwiftPM consumers these symbols are visible because
+# Package.swift declares the C target as a dependency; in CocoaPods
+# consumers we need the Swift module to explicitly `import WalletCoreCommon`,
+# which the codegen output does not emit. We add the import here so the
+# published tarball is CocoaPods-ready.
 #
-# Only files outside Sources/Generated/Protobuf/ get the import: the
+# Only files outside Sources/Generated/Protobuf/ get the import — the
 # protobuf-only files don't reference TW* and adding the import would only
 # create a no-op dependency.
+#
+# Inserts after `import Foundation` if present (e.g. HDWallet.swift), or
+# before the first non-comment / non-blank line if there's no `import
+# Foundation` (e.g. HDVersion+Extension.swift, which is a pure
+# `extension` file).
 if [[ -d "$SWIFT_ROOT" ]]; then
     find "$SWIFT_ROOT" -name '*.swift' -not -path '*/Protobuf/*' -print0 | while IFS= read -r -d '' f; do
-        # Skip if already imports WalletCoreCommon (idempotent).
+        # Idempotent: skip files already importing WalletCoreCommon.
         if grep -q '^import WalletCoreCommon$' "$f"; then
             continue
         fi
-        # Skip files that don't `import Foundation` either (they're not
-        # standalone Swift sources — Dummy.cpp / SecRandom.m / etc. won't
-        # match the *.swift glob, but be defensive).
-        if ! grep -q '^import Foundation$' "$f"; then
+        # Skip files that don't reference any TW symbol — no need for the
+        # import.
+        if ! grep -qE 'TW[A-Z][A-Za-z]' "$f"; then
             continue
         fi
-        if sed --version >/dev/null 2>&1; then
-            sed -i \
-                -e '/^import Foundation$/a\
-import WalletCoreCommon' "$f"
-        else
-            # BSD sed wants the `a\` continuation on its own line.
-            sed -i '' -e $'/^import Foundation$/a\\\nimport WalletCoreCommon' "$f"
-        fi
+        # awk-based insert:
+        #   - if a line `^import Foundation$` appears, insert
+        #     `import WalletCoreCommon` immediately after it
+        #   - otherwise, insert before the first line that isn't a `//`
+        #     comment and isn't blank
+        TMP=$(mktemp)
+        awk '
+            BEGIN { inserted = 0 }
+            /^import Foundation$/ {
+                print
+                if (!inserted) { print "import WalletCoreCommon"; inserted = 1 }
+                next
+            }
+            inserted == 0 && !/^\/\// && !/^[[:space:]]*$/ {
+                print "import WalletCoreCommon"
+                print ""
+                inserted = 1
+            }
+            { print }
+        ' "$f" > "$TMP" && mv "$TMP" "$f"
     done
 fi
+
+echo "Stripping Swift wrappers that reference TW symbols not present in shipped C headers..."
+# Some upstream codegen Swift files reference TW functions that were
+# removed (or never declared) in the C ABI we ship via the xcframework.
+# Compiling them under CocoaPods then fails with 'cannot find TWxxx in
+# scope' even though the file imports WalletCoreCommon — the symbol
+# really isn't there. We remove those files from the tarball entirely.
+#
+# Current known set:
+#   - Sources/Generated/CryptoBoxSecretKey.swift
+#     (references TWCryptoBoxSecretKeyGetPublicKey; TWCryptoBoxSecretKey.h
+#      only declares TWCryptoBoxSecretKeyData)
+#
+# When a new mismatch surfaces, add the path here, re-tag, and document
+# the symbol delta in the release notes.
+SWIFT_SKIP=(
+    "Sources/Generated/CryptoBoxSecretKey.swift"
+)
 
 echo "Packaging Swift sources (full Sources/ tree)..."
 # Includes top-level (AnySigner.swift, KeyStore.swift, Wallet.swift, etc.) AND
@@ -168,7 +203,11 @@ echo "Packaging Swift sources (full Sources/ tree)..."
 # source_files glob (v0.2.3+ layout: postinstall extracts Sources/ inside
 # the podspec dir; earlier versions used `../native/ios/Sources/` which
 # CocoaPods silently drops on `..`-traversal).
-tar -czf "$OUT/swift-sources.tar.gz" -C swift Sources
+TAR_EXCLUDE_ARGS=()
+for skip in "${SWIFT_SKIP[@]}"; do
+    TAR_EXCLUDE_ARGS+=(--exclude "$skip")
+done
+tar -czf "$OUT/swift-sources.tar.gz" "${TAR_EXCLUDE_ARGS[@]}" -C swift Sources
 
 # Invariant: the tarball MUST contain raw protoc-generated *.pb.swift files.
 # Their absence means tools/generate-files ios was run without protoc-gen-swift
@@ -205,19 +244,21 @@ if [[ "$LEAKED" -gt 0 ]]; then
 fi
 echo "  OK (0 WalletCoreSwiftProtobuf references)"
 
-# Invariant (v0.2.5+): non-Protobuf Swift sources must `import WalletCoreCommon`.
-# Without this, every TW* reference fails 'cannot find ... in scope' under
-# CocoaPods (the xcframework's C symbols aren't visible to the Swift module
-# unless the source explicitly imports the framework module).
-echo "Verifying non-Protobuf Swift files import WalletCoreCommon..."
+# Invariant (v0.2.5+): every non-Protobuf Swift source that references a
+# TW symbol must `import WalletCoreCommon`. Without this, the TW* reference
+# fails 'cannot find ... in scope' under CocoaPods. v0.2.8 expanded the
+# rule from 'files with import Foundation' to 'files with any TW symbol',
+# which catches pure-extension files like HDVersion+Extension.swift that
+# omit the Foundation import.
+echo "Verifying every TW-using Swift file imports WalletCoreCommon..."
 MISSING_IMPORT=$(find "$TMP_EXTRACT" -name '*.swift' -not -path '*/Protobuf/*' \
-    -exec sh -c 'grep -q "^import Foundation$" "$1" && ! grep -q "^import WalletCoreCommon$" "$1" && echo "$1"' _ {} \; 2>/dev/null | wc -l | tr -d ' ')
+    -exec sh -c 'grep -qE "TW[A-Z][A-Za-z]" "$1" && ! grep -q "^import WalletCoreCommon$" "$1" && echo "$1"' _ {} \; 2>/dev/null | wc -l | tr -d ' ')
 if [[ "$MISSING_IMPORT" -gt 0 ]]; then
-    echo "ERROR: $MISSING_IMPORT non-Protobuf Swift file(s) missing 'import WalletCoreCommon' after sed pass." >&2
+    echo "ERROR: $MISSING_IMPORT TW-using Swift file(s) missing 'import WalletCoreCommon' after sed pass." >&2
     rm -rf "$TMP_EXTRACT"
     exit 7
 fi
-echo "  OK (all non-Protobuf .swift files import WalletCoreCommon)"
+echo "  OK (all TW-using .swift files import WalletCoreCommon)"
 
 # Invariant (v0.2.5+): WalletCoreCommon.xcframework includes Modules/module.modulemap.
 echo "Verifying WalletCoreCommon.xcframework has Modules/module.modulemap..."
