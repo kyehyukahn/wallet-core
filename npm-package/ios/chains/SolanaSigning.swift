@@ -53,9 +53,9 @@ enum SolanaSigning {
       }
     }
 
-    let inputBytes = try input.serializedData()
-    let outputBytes = AnySigner.sign(data: inputBytes, coin: .solana)
-    let output = try TW_Solana_Proto_SigningOutput(serializedData: outputBytes)
+    // See EvmSigning.swift for the AnySigner.sign<Output>(input:coin:) generic.
+    let output: TW_Solana_Proto_SigningOutput =
+        AnySigner.sign(input: input, coin: .solana)
     return output.encoded
   }
 }

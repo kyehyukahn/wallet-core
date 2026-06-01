@@ -193,6 +193,14 @@ echo "Stripping Swift wrappers that reference TW symbols not present in shipped 
 # When a new mismatch surfaces, add the path here, re-tag, and document
 # the symbol delta in the release notes.
 SWIFT_SKIP=(
+    # CryptoBox family — Swift wrappers reference TW symbols not declared
+    # in the shipped C headers (only TWCryptoBoxSecretKeyData is exported,
+    # not GetPublicKey / IsValid / CreateWithData / Delete). Stripping the
+    # secret-key file forces stripping its dependents (CryptoBox.swift uses
+    # CryptoBoxSecretKey; CryptoBoxPublicKey.swift has its own missing
+    # symbols). Whole family unused by EVM/Solana signing.
+    "Sources/Generated/CryptoBox.swift"
+    "Sources/Generated/CryptoBoxPublicKey.swift"
     "Sources/Generated/CryptoBoxSecretKey.swift"
 )
 

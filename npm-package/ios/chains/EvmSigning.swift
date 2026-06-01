@@ -53,9 +53,11 @@ enum EvmSigning {
 
     input.transaction = try buildTransaction(tx)
 
-    let inputBytes = try input.serializedData()
-    let outputBytes = AnySigner.sign(data: inputBytes, coin: .ethereum)
-    let output = try TW_Ethereum_Proto_SigningOutput(serializedData: outputBytes)
+    // Upstream AnySigner is generic over SigningOutput:
+    //   public static func sign<O: Message>(input: SigningInput, coin: CoinType) -> O
+    // The return-type annotation drives the inference of O.
+    let output: TW_Ethereum_Proto_SigningOutput =
+        AnySigner.sign(input: input, coin: .ethereum)
     return "0x" + EvmSigning.toHex(output.encoded)
   }
 
