@@ -33,21 +33,28 @@ const BASE_URL =
   process.env.WALLET_CORE_RELEASE_BASE_URL ||
   `https://github.com/kyehyukahn/wallet-core/releases/download/v${VERSION}`;
 
+// Layout roots:
+//   root: 'native' (default) → <pkg>/native/<dest>/
+//   root: 'pkg'              → <pkg>/<dest>/
+//
 // extract:
-//   'unzip' → unzip <src> -d <native/<dest>>
-//   'untar' → tar  -xzf <src> -C <native/<dest>>  (mkdir <dest> first)
-//   'copy'  → copy  <src>     <native/<dest>/<name>>
+//   'unzip' → unzip <src> -d <root>/<dest>
+//   'untar' → tar  -xzf <src> -C <root>/<dest>  (mkdir <dest> first)
+//   'copy'  → copy  <src>     <root>/<dest>/<name>
 const ASSETS = [
-  { name: 'WalletCoreCommon.xcframework.zip', dest: 'ios',     extract: 'unzip' },
-  { name: 'WalletCoreRs.xcframework.zip',     dest: 'ios',     extract: 'unzip' },
-  { name: 'wallet-core.aar',                  dest: 'android', extract: 'copy'  },
-  // v0.2.0+: Swift sources for the Expo Module podspec to compile alongside
-  // its own .swift files. Untarred so that node_modules/@kyehyukahn/wallet-core/
-  // native/ios/Sources/**/*.swift becomes a stable glob target.
-  { name: 'swift-sources.tar.gz',             dest: 'ios',     extract: 'untar' },
+  { name: 'WalletCoreCommon.xcframework.zip', root: 'native', dest: 'ios',     extract: 'unzip' },
+  { name: 'WalletCoreRs.xcframework.zip',     root: 'native', dest: 'ios',     extract: 'unzip' },
+  { name: 'wallet-core.aar',                  root: 'native', dest: 'android', extract: 'copy'  },
+  // v0.2.3+: Swift sources land at <pkg>/ios/Sources/ so the WalletCoreModule
+  // podspec can reference them with an in-podspec-dir glob ('Sources/**/*.swift').
+  // CocoaPods' source_files silently drops patterns that traverse `..`, so
+  // anchoring inside the podspec directory is the only reliable shape.
+  // (xcframeworks remain under <pkg>/native/ios/; vendored_frameworks handles
+  //  the `../native/ios/...` form fine — only source_files is asymmetric.)
+  { name: 'swift-sources.tar.gz',             root: 'pkg',    dest: 'ios',     extract: 'untar' },
   // v0.2.0+: Java protobuf-generated SigningInput types for the Expo Module
   // Kotlin code to build Ethereum.SigningInput / Solana.SigningInput.
-  { name: 'wallet-core-proto.jar',            dest: 'android', extract: 'copy'  },
+  { name: 'wallet-core-proto.jar',            root: 'native', dest: 'android', extract: 'copy'  },
 ];
 const SUMS_FILE = 'SHA256SUMS';
 
@@ -162,9 +169,10 @@ async function main() {
     log(`  ok (sha256 ${actual.slice(0, 16)}…)`);
   }
 
-  // 3. lay out final native/ tree
+  // 3. lay out final tree
   for (const a of ASSETS) {
-    const baseTarget = path.join(NATIVE_DIR, a.dest);
+    const rootDir = a.root === 'pkg' ? PKG_DIR : NATIVE_DIR;
+    const baseTarget = path.join(rootDir, a.dest);
     ensureDir(baseTarget);
     const staged = path.join(stageDir, a.name);
     switch (a.extract) {
@@ -172,9 +180,12 @@ async function main() {
         unzipTo(staged, baseTarget);
         break;
       case 'untar': {
-        // The Swift sources land at native/ios/Sources/ — keep this stable
-        // so podspec source_files glob can hard-code the path.
+        // Swift sources land at <pkg>/ios/Sources/ — podspec source_files
+        // globs against this path via 'Sources/**/*.swift'.
         const sourcesDir = path.join(baseTarget, 'Sources');
+        // Wipe any previous extraction at the same destination to avoid
+        // stale files surviving a downgrade or partial earlier install.
+        fs.rmSync(sourcesDir, { recursive: true, force: true });
         ensureDir(sourcesDir);
         untarTo(staged, sourcesDir);
         break;
@@ -187,6 +198,20 @@ async function main() {
     }
   }
   fs.rmSync(stageDir, { recursive: true, force: true });
+
+  // 4. sanity guard: the Swift symbol surface that chains/EvmSigning.swift
+  //    depends on must be present after extraction. Catches a class of
+  //    repack regressions (empty tarball, wrong destination, bad strip)
+  //    that would otherwise only surface as opaque "cannot find type
+  //    TW_*_Proto_*" errors during a consumer's xcodebuild.
+  const pbSentinel = path.join(PKG_DIR, 'ios', 'Sources', 'Generated', 'Protobuf', 'Ethereum.pb.swift');
+  if (!fs.existsSync(pbSentinel)) {
+    die(
+      `postinstall sanity check failed: ${path.relative(PKG_DIR, pbSentinel)} not present after extraction.\n` +
+      `The swift-sources.tar.gz published with this version is missing required\n` +
+      `protoc-generated files. Refuse to leave the package in a half-built state.`
+    );
+  }
 
   fs.writeFileSync(MARKER, `${new Date().toISOString()}\n`);
   log(`installed v${VERSION} under ${path.relative(process.cwd(), NATIVE_DIR)}/`);

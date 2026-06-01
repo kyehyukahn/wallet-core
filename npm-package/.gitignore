@@ -1,2 +1,7 @@
 # Native artifacts downloaded by postinstall (per package version).
 native/
+
+# Swift sources extracted into the podspec directory by postinstall
+# (v0.2.3+). Must not be tracked in git or shipped in the published
+# tarball — they're regenerated from swift-sources.tar.gz per install.
+ios/Sources/
