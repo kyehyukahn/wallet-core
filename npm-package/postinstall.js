@@ -42,19 +42,21 @@ const BASE_URL =
 //   'untar' → tar  -xzf <src> -C <root>/<dest>  (mkdir <dest> first)
 //   'copy'  → copy  <src>     <root>/<dest>/<name>
 const ASSETS = [
-  { name: 'WalletCoreCommon.xcframework.zip', root: 'native', dest: 'ios',     extract: 'unzip' },
-  { name: 'WalletCoreRs.xcframework.zip',     root: 'native', dest: 'ios',     extract: 'unzip' },
+  // v0.2.6+: xcframeworks land inside the podspec directory (<pkg>/ios/) too,
+  // not under <pkg>/native/ios/. CocoaPods silently drops `vendored_frameworks`
+  // entries that traverse `..` (the same asymmetry that bit `source_files`
+  // in v0.2.3, which we'd assumed was source_files-only). Anchoring all
+  // pod-consumed assets inside the podspec dir is the only reliable shape.
+  { name: 'WalletCoreCommon.xcframework.zip', root: 'pkg', dest: 'ios',     extract: 'unzip' },
+  { name: 'WalletCoreRs.xcframework.zip',     root: 'pkg', dest: 'ios',     extract: 'unzip' },
+  // Android tools accept absolute paths from build.gradle, so the AAR /
+  // proto.jar can stay under <pkg>/native/android/ with no glob-relative
+  // gotcha. No `..` traversal involved in build.gradle's `files(...)` API.
   { name: 'wallet-core.aar',                  root: 'native', dest: 'android', extract: 'copy'  },
-  // v0.2.3+: Swift sources land at <pkg>/ios/Sources/ so the WalletCoreModule
-  // podspec can reference them with an in-podspec-dir glob ('Sources/**/*.swift').
-  // CocoaPods' source_files silently drops patterns that traverse `..`, so
-  // anchoring inside the podspec directory is the only reliable shape.
-  // (xcframeworks remain under <pkg>/native/ios/; vendored_frameworks handles
-  //  the `../native/ios/...` form fine — only source_files is asymmetric.)
-  { name: 'swift-sources.tar.gz',             root: 'pkg',    dest: 'ios',     extract: 'untar' },
-  // v0.2.0+: Java protobuf-generated SigningInput types for the Expo Module
-  // Kotlin code to build Ethereum.SigningInput / Solana.SigningInput.
   { name: 'wallet-core-proto.jar',            root: 'native', dest: 'android', extract: 'copy'  },
+  // v0.2.3+: Swift sources at <pkg>/ios/Sources/ (in-podspec-dir glob,
+  // 'Sources/**/*.swift', same reason as above).
+  { name: 'swift-sources.tar.gz',             root: 'pkg', dest: 'ios',     extract: 'untar' },
 ];
 const SUMS_FILE = 'SHA256SUMS';
 
