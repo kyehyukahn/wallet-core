@@ -5,7 +5,7 @@ apply plugin: 'expo-module-gradle-plugin'
 // Bump in lockstep with npm-package/package.json on each release.
 // Kept as a literal (not parsed from package.json) so Android Studio's
 // Gradle diagnostics don't choke on `groovy.json.JsonSlurper` resolution.
-def package_version = '0.2.13'
+def package_version = '0.2.14'
 
 group = 'expo.modules.walletcore'
 version = package_version

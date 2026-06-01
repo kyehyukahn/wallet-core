@@ -59,8 +59,17 @@ internal object EvmSigning {
             }
         }
 
-        val outputBytes = AnySigner.sign(builder.build().toByteArray(), CoinType.ETHEREUM)
-        val output = Ethereum.SigningOutput.parseFrom(outputBytes)
+        // Java AnySigner is generic:
+        //   <T extends MessageLite> T sign(MessageLite input, CoinType coin, Parser<T>)
+        // Pass the protobuf input + parser; AnySigner serialises and parses
+        // for us. Earlier scaffold called sign(byte[], CoinType) which is
+        // not a real overload (signed bytes round-tripped through plain
+        // nativeSign return raw bytes, never a SigningOutput).
+        val output: Ethereum.SigningOutput = AnySigner.sign(
+            builder.build(),
+            CoinType.ETHEREUM,
+            Ethereum.SigningOutput.parser(),
+        )
         return "0x" + output.encoded.toByteArray().toHexString()
     }
 

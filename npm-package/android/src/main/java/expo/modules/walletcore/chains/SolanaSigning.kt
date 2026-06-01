@@ -56,8 +56,12 @@ internal object SolanaSigning {
             .setTransferTransaction(transferBuilder.build())
             .build()
 
-        val outputBytes = AnySigner.sign(input.toByteArray(), CoinType.SOLANA)
-        val output = Solana.SigningOutput.parseFrom(outputBytes)
+        // See EvmSigning.kt for the AnySigner.sign<T>(MessageLite, CoinType, Parser<T>) generic.
+        val output: Solana.SigningOutput = AnySigner.sign(
+            input,
+            CoinType.SOLANA,
+            Solana.SigningOutput.parser(),
+        )
         return output.encoded
     }
 }
