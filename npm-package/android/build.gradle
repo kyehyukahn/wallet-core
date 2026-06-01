@@ -2,8 +2,13 @@ apply plugin: 'com.android.library'
 apply plugin: 'kotlin-android'
 apply plugin: 'expo-module-gradle-plugin'
 
+// Bump in lockstep with npm-package/package.json on each release.
+// Kept as a literal (not parsed from package.json) so Android Studio's
+// Gradle diagnostics don't choke on `groovy.json.JsonSlurper` resolution.
+def package_version = '0.2.10'
+
 group = 'expo.modules.walletcore'
-version = '0.1.0'
+version = package_version
 
 android {
     namespace 'expo.modules.walletcore'
@@ -12,6 +17,8 @@ android {
     defaultConfig {
         minSdkVersion 23
         targetSdkVersion 35
+        versionCode 1
+        versionName package_json['version']
     }
 
     compileOptions {
