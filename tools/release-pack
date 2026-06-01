@@ -59,10 +59,46 @@ cp "$AAR" "$OUT/wallet-core.aar"
 echo "Copying Android proto JAR..."
 cp "$PROTO_JAR" "$OUT/wallet-core-proto.jar"
 
+echo "Normalising Swift Protobuf module name (CocoaPods compatibility)..."
+# tools/generate-files ios rewrites every Sources/Generated/Protobuf/*.swift
+# from `import SwiftProtobuf` to `import WalletCoreSwiftProtobuf` (and the
+# qualified-symbol form `SwiftProtobuf.` → `WalletCoreSwiftProtobuf.`) so the
+# upstream SwiftPM target can re-export Apple's SwiftProtobuf under its own
+# umbrella. CocoaPods consumers (cirqle-mobile, etc.) link against the
+# canonical `SwiftProtobuf` pod and have no such alias, so every .pb.swift
+# fails to resolve `WalletCoreSwiftProtobuf` at SwiftCompile time. v0.2.0–
+# v0.2.3 all shipped this — surfaced only on v0.2.3 once the pb.swift files
+# finally reached the pod target's SwiftFileList (B4 fix).
+#
+# We undo the rewrite in-place here, just before the tarball is produced,
+# so downstream pods can compile the Protobuf tree as-is.
+# Covers both the generated Protobuf tree AND hand-written wrappers like
+# swift/Sources/AnySigner.swift that also `import WalletCoreSwiftProtobuf`.
+SWIFT_ROOT="swift/Sources"
+if [[ -d "$SWIFT_ROOT" ]]; then
+    find "$SWIFT_ROOT" -name '*.swift' -print0 | while IFS= read -r -d '' f; do
+        # macOS sed needs `-i ''` (with empty backup suffix); GNU sed accepts `-i`.
+        if sed --version >/dev/null 2>&1; then
+            sed -i \
+                -e 's/^import WalletCoreSwiftProtobuf$/import SwiftProtobuf/' \
+                -e 's/WalletCoreSwiftProtobuf\./SwiftProtobuf./g' \
+                "$f"
+        else
+            sed -i '' \
+                -e 's/^import WalletCoreSwiftProtobuf$/import SwiftProtobuf/' \
+                -e 's/WalletCoreSwiftProtobuf\./SwiftProtobuf./g' \
+                "$f"
+        fi
+    done
+fi
+
 echo "Packaging Swift sources (full Sources/ tree)..."
 # Includes top-level (AnySigner.swift, KeyStore.swift, Wallet.swift, etc.) AND
 # Generated/ (HDWallet, PrivateKey, Enums/, Protobuf/*) AND Extensions/, Types/.
-# Consumers reach into native/ios/Sources/**/*.swift from podspec source_files.
+# Consumers reach into <pkg>/ios/Sources/**/*.swift via the podspec
+# source_files glob (v0.2.3+ layout: postinstall extracts Sources/ inside
+# the podspec dir; earlier versions used `../native/ios/Sources/` which
+# CocoaPods silently drops on `..`-traversal).
 tar -czf "$OUT/swift-sources.tar.gz" -C swift Sources
 
 # Invariant: the tarball MUST contain raw protoc-generated *.pb.swift files.
@@ -82,6 +118,23 @@ fi
 echo "  OK ($PB_COUNT *.pb.swift entries)"
 tar -tzf "$OUT/swift-sources.tar.gz" | grep '\.pb\.swift$' | grep -E '(Ethereum|Solana|Common)\.pb\.swift$' \
     || { echo "ERROR: expected Ethereum.pb.swift / Solana.pb.swift / Common.pb.swift in tarball." >&2; exit 3; }
+
+# Invariant: every protobuf source must import the CocoaPods-visible
+# `SwiftProtobuf` module, never the SwiftPM-only `WalletCoreSwiftProtobuf`
+# alias. The sed pass above is supposed to convert; this check guarantees
+# it. (v0.2.4+: paired with the .pb.swift count guard from v0.2.2 and the
+# Ethereum/Solana/Common presence check.)
+echo "Verifying no WalletCoreSwiftProtobuf references survive..."
+TMP_EXTRACT=$(mktemp -d)
+tar -xzf "$OUT/swift-sources.tar.gz" -C "$TMP_EXTRACT"
+LEAKED=$(grep -rl "WalletCoreSwiftProtobuf" "$TMP_EXTRACT" 2>/dev/null | wc -l | tr -d ' ')
+rm -rf "$TMP_EXTRACT"
+if [[ "$LEAKED" -gt 0 ]]; then
+    echo "ERROR: $LEAKED file(s) in swift-sources.tar.gz still reference 'WalletCoreSwiftProtobuf'." >&2
+    echo "       The sed normalisation step should have rewritten them to 'SwiftProtobuf'." >&2
+    exit 4
+fi
+echo "  OK (0 WalletCoreSwiftProtobuf references)"
 
 echo "Computing SHA-256 checksums..."
 ( cd "$OUT" && shasum -a 256 *.zip *.aar *.jar *.tar.gz > SHA256SUMS )
