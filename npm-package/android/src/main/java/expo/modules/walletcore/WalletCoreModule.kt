@@ -14,6 +14,25 @@ import wallet.core.jni.Mnemonic
 // `definition()` body by calling static helpers in chains/<Chain>Signing.kt.
 
 class WalletCoreModule : Module() {
+    companion object {
+        // wallet-core.aar bundles libTrustWalletCore.so for every ABI under
+        // jni/<abi>/ — gradle's AGP repacks it into the consumer APK's
+        // lib/<abi>/ — but the AAR ships zero classes that call
+        // System.loadLibrary, so without this static init the very first
+        // call into any wallet.core.jni.* class throws UnsatisfiedLinkError
+        // (the JVM resolves Java_wallet_core_jni_<X>_native<...> against a
+        // library that was never loaded). Expo Modules autolinking
+        // instantiates WalletCoreModule during app startup, the JVM resolves
+        // the class, this companion init fires, and the .so is available
+        // for every subsequent JNI call.
+        //
+        // iOS does not need a symmetric step because Apple's static
+        // linker resolves the xcframework symbols at link time.
+        init {
+            System.loadLibrary("TrustWalletCore")
+        }
+    }
+
     override fun definition() = ModuleDefinition {
         Name("WalletCoreModule")
 

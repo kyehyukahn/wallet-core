@@ -5,3 +5,8 @@ native/
 # (v0.2.3+). Must not be tracked in git or shipped in the published
 # tarball — they're regenerated from swift-sources.tar.gz per install.
 ios/Sources/
+
+# Gradle daemon / build cache produced when running gradle commands
+# inside npm-package/android/ during local Android publish wiring work
+# (v0.2.10~v0.2.14). Per-machine state — never tracked.
+android/.gradle/

@@ -283,6 +283,31 @@ if [[ "$MODMAP_COUNT" -lt 1 || "$UMBRELLA_COUNT" -lt 1 ]]; then
 fi
 echo "  OK ($MODMAP_COUNT slice(s) with module.modulemap, $UMBRELLA_COUNT umbrella header(s))"
 
+# Invariant (v0.2.15+): the Expo Module Kotlin wrapper that consumers
+# autolink MUST call System.loadLibrary("TrustWalletCore") somewhere
+# (companion init, static block, init {} body, or via a load-helper
+# call). Without it, every wallet.core.jni.* call from JS throws
+# UnsatisfiedLinkError at runtime — the .so is in the APK but the
+# JVM never loaded it. wallet-core.aar itself ships zero classes
+# that call loadLibrary (verified with `javap -c` across classes.jar),
+# so the responsibility falls on the Expo Module wrapper. Stage B
+# (compile) cannot catch this; only Stage D (runtime) does.
+# This is the Android counterpart of the iOS pack-time guards above.
+echo "Verifying WalletCoreModule.kt loads the TrustWalletCore .so..."
+WC_MODULE_KT="npm-package/android/src/main/java/expo/modules/walletcore/WalletCoreModule.kt"
+if [[ ! -f "$WC_MODULE_KT" ]]; then
+    echo "ERROR: $WC_MODULE_KT not found — release-pack invariant cannot run." >&2
+    exit 10
+fi
+if ! grep -qE 'System\.loadLibrary\([^)]*"TrustWalletCore"' "$WC_MODULE_KT"; then
+    echo "ERROR: $WC_MODULE_KT does not call System.loadLibrary(\"TrustWalletCore\")." >&2
+    echo "       Add a companion-object init { System.loadLibrary(\"TrustWalletCore\") }" >&2
+    echo "       block — without it consumer JS calls throw UnsatisfiedLinkError at" >&2
+    echo "       runtime even though the .so is bundled (the JVM never loads it)." >&2
+    exit 10
+fi
+echo "  OK (System.loadLibrary call present)"
+
 echo "Computing SHA-256 checksums..."
 ( cd "$OUT" && shasum -a 256 *.zip *.aar *.jar *.tar.gz > SHA256SUMS )
 
