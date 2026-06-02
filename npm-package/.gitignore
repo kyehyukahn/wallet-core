@@ -1,12 +1,26 @@
-# Native artifacts downloaded by postinstall (per package version).
+# All postinstall-downloaded artifacts under the package tree. Per-version,
+# per-machine — must never be tracked in git or shipped in the published
+# npm tarball. The package.json `files:` allowlist enumerates exactly what
+# IS published; these patterns are an additional belt-and-braces guard.
+
+# Pre-v0.2.6 layout (xcframeworks under native/ios/; still kept for any
+# consumer that pinned an older version and is left with this tree).
 native/
 
-# Swift sources extracted into the podspec directory by postinstall
-# (v0.2.3+). Must not be tracked in git or shipped in the published
-# tarball — they're regenerated from swift-sources.tar.gz per install.
+# v0.2.3+ layout: Swift sources extracted into the podspec dir.
 ios/Sources/
+
+# v0.2.6+ layout: xcframeworks extracted directly into the podspec dir
+# (vendored_frameworks no longer traverses `..`). All-pattern glob so any
+# future xcframework name (BarzKit.xcframework, etc.) is covered.
+ios/*.xcframework/
+
+# macOS metadata that `unzip` leaves behind when extracting ditto-produced
+# zips on macOS.
+ios/__MACOSX/
 
 # Gradle daemon / build cache produced when running gradle commands
 # inside npm-package/android/ during local Android publish wiring work
 # (v0.2.10~v0.2.14). Per-machine state — never tracked.
 android/.gradle/
+android/build/
