@@ -5,7 +5,7 @@ apply plugin: 'expo-module-gradle-plugin'
 // Bump in lockstep with npm-package/package.json on each release.
 // Kept as a literal (not parsed from package.json) so Android Studio's
 // Gradle diagnostics don't choke on `groovy.json.JsonSlurper` resolution.
-def package_version = '0.2.14'
+def package_version = '0.2.17'
 
 group = 'expo.modules.walletcore'
 version = package_version
@@ -35,6 +35,11 @@ android {
             java {
                 srcDirs += ['src/main/java']
             }
+            // v0.2.17+: wallet-core's native .so libs land here after
+            // postinstall unpacks wallet-core.aar. AGP merges them into the
+            // consumer APK exactly as the old AAR dep used to — but without
+            // tripping `hasLocalAarDeps` on AGP 8.x's bundleDebugAar.
+            jniLibs.srcDirs += ["${nativeAndroidDir}/jniLibs"]
         }
     }
 
@@ -50,7 +55,14 @@ android {
 def nativeAndroidDir = new File(projectDir.parentFile, 'native/android')
 
 dependencies {
-    implementation files("${nativeAndroidDir}/wallet-core.aar")
+    // v0.2.17+: consume classes from the unpacked classes.jar (renamed to
+    // wallet-core-classes.jar by postinstall) instead of the wallet-core.aar
+    // container. AGP 8.x's hasLocalAarDeps check refuses a local-AAR file dep
+    // on an android-library module (`:kyehyukahn-wallet-core:bundleDebugAar`),
+    // and the original AAR has no res/aidl/components — only classes.jar +
+    // jniLibs — so the container provides no value here. jniLibs.srcDirs
+    // above picks up the .so set; net APK contents are unchanged.
+    implementation files("${nativeAndroidDir}/wallet-core-classes.jar")
     implementation files("${nativeAndroidDir}/wallet-core-proto.jar")
     // Required at runtime by wallet-core-proto.jar (it uses
     // 'api com.google.protobuf:protobuf-javalite:3.22.3' so this is

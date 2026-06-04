@@ -201,7 +201,41 @@ async function main() {
   }
   fs.rmSync(stageDir, { recursive: true, force: true });
 
-  // 4. sanity guard: the Swift symbol surface that chains/EvmSigning.swift
+  // 4. Android — unpack wallet-core.aar into JAR + jniLibs (v0.2.17+).
+  //    AGP 8.x rejects `implementation files("…wallet-core.aar")` because
+  //    `bundleDebugAar` evaluates `hasLocalAarDeps` on every android-library
+  //    module, including this one. Our published AAR has only classes.jar +
+  //    jni/<ABI>/*.so (verified: no res/, no aidl, stub manifest), so the
+  //    container is unnecessary — we split it back into the two AGP-native
+  //    inputs and consume them via files(…classes.jar) + jniLibs.srcDirs in
+  //    android/build.gradle. Net effect: identical APK contents, AGP 8/9 safe.
+  const androidDir = path.join(NATIVE_DIR, 'android');
+  const aarPath = path.join(androidDir, 'wallet-core.aar');
+  if (fs.existsSync(aarPath)) {
+    const unpackDir = path.join(androidDir, '.aar-unpack');
+    fs.rmSync(unpackDir, { recursive: true, force: true });
+    ensureDir(unpackDir);
+    execFileSync('unzip', ['-q', '-o', aarPath, '-d', unpackDir], { stdio: 'inherit' });
+
+    const stagedClasses = path.join(unpackDir, 'classes.jar');
+    if (!fs.existsSync(stagedClasses)) {
+      die(`wallet-core.aar unpack: classes.jar missing inside the AAR.`);
+    }
+    fs.renameSync(stagedClasses, path.join(androidDir, 'wallet-core-classes.jar'));
+
+    const stagedJni = path.join(unpackDir, 'jni');
+    if (!fs.existsSync(stagedJni)) {
+      die(`wallet-core.aar unpack: jni/ directory missing inside the AAR.`);
+    }
+    const jniLibsDir = path.join(androidDir, 'jniLibs');
+    fs.rmSync(jniLibsDir, { recursive: true, force: true });
+    fs.renameSync(stagedJni, jniLibsDir);
+
+    fs.rmSync(unpackDir, { recursive: true, force: true });
+    log(`unpacked wallet-core.aar → wallet-core-classes.jar + jniLibs/`);
+  }
+
+  // 5. sanity guard: the Swift symbol surface that chains/EvmSigning.swift
   //    depends on must be present after extraction. Catches a class of
   //    repack regressions (empty tarball, wrong destination, bad strip)
   //    that would otherwise only surface as opaque "cannot find type

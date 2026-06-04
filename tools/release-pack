@@ -308,6 +308,62 @@ if ! grep -qE 'System\.loadLibrary\([^)]*"TrustWalletCore"' "$WC_MODULE_KT"; the
 fi
 echo "  OK (System.loadLibrary call present)"
 
+# Invariant (v0.2.17+): npm-package/android/build.gradle must not declare a
+# direct local .aar file dep. AGP 8.x runs `:<module>:bundleDebugAar` on every
+# android-library module and rejects local AAR deps via `hasLocalAarDeps`,
+# blocking consumer `:app:assembleDebug` builds (B11 — surfaced during cirqle
+# PR 5a-2 Stage B). Consume `wallet-core-classes.jar` + `jniLibs/` instead;
+# both are produced by the postinstall unpack step (also guarded below).
+echo "Verifying android/build.gradle does not reference wallet-core.aar as a file dep..."
+WC_BUILD_GRADLE="npm-package/android/build.gradle"
+if [[ ! -f "$WC_BUILD_GRADLE" ]]; then
+    echo "ERROR: $WC_BUILD_GRADLE not found — release-pack invariant cannot run." >&2
+    exit 11
+fi
+if grep -E 'implementation[[:space:]]+files\([^)]*wallet-core\.aar' "$WC_BUILD_GRADLE" >/dev/null; then
+    echo "ERROR: $WC_BUILD_GRADLE still references wallet-core.aar as a local file dep." >&2
+    echo "       AGP 8.x rejects this on bundleDebugAar (hasLocalAarDeps). Consume" >&2
+    echo "       wallet-core-classes.jar + jniLibs.srcDirs instead (v0.2.17 pattern)." >&2
+    exit 11
+fi
+if ! grep -E 'implementation[[:space:]]+files\([^)]*wallet-core-classes\.jar' "$WC_BUILD_GRADLE" >/dev/null; then
+    echo "ERROR: $WC_BUILD_GRADLE does not declare wallet-core-classes.jar dep." >&2
+    echo "       v0.2.17+ expects implementation files(\"\${nativeAndroidDir}/wallet-core-classes.jar\")." >&2
+    exit 11
+fi
+if ! grep -E 'jniLibs\.srcDirs[[:space:]]*\+?=[[:space:]]*\[[^]]*jniLibs' "$WC_BUILD_GRADLE" >/dev/null; then
+    echo "ERROR: $WC_BUILD_GRADLE does not extend jniLibs.srcDirs with the unpacked jniLibs/ dir." >&2
+    echo "       Without it the .so libs from wallet-core.aar never reach the merged APK." >&2
+    exit 11
+fi
+echo "  OK (build.gradle on JAR + jniLibs.srcDirs pattern)"
+
+# Invariant (v0.2.17+): npm-package/postinstall.js must perform the AAR
+# unpack step. Without it the published build.gradle references files that
+# don't exist on the consumer's disk.
+echo "Verifying postinstall.js unpacks wallet-core.aar..."
+WC_POSTINSTALL="npm-package/postinstall.js"
+if [[ ! -f "$WC_POSTINSTALL" ]]; then
+    echo "ERROR: $WC_POSTINSTALL not found — release-pack invariant cannot run." >&2
+    exit 12
+fi
+if ! grep -E "wallet-core-classes\.jar" "$WC_POSTINSTALL" >/dev/null; then
+    echo "ERROR: $WC_POSTINSTALL unpack block does not emit wallet-core-classes.jar." >&2
+    echo "       v0.2.17+ expects a postinstall block that splits wallet-core.aar" >&2
+    echo "       into wallet-core-classes.jar + jniLibs/<ABI>/libTrustWalletCore.so." >&2
+    exit 12
+fi
+if ! grep -E "jniLibs" "$WC_POSTINSTALL" >/dev/null; then
+    echo "ERROR: $WC_POSTINSTALL unpack block does not lay out jniLibs/." >&2
+    echo "       Without jniLibs the .so files never reach the merged APK." >&2
+    exit 12
+fi
+if ! grep -E "execFileSync\(['\"]unzip['\"]" "$WC_POSTINSTALL" >/dev/null; then
+    echo "ERROR: $WC_POSTINSTALL does not invoke unzip (the AAR split needs it)." >&2
+    exit 12
+fi
+echo "  OK (postinstall has AAR unpack → classes.jar + jniLibs/)"
+
 echo "Computing SHA-256 checksums..."
 ( cd "$OUT" && shasum -a 256 *.zip *.aar *.jar *.tar.gz > SHA256SUMS )
 
