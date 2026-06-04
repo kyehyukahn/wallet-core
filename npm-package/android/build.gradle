@@ -5,10 +5,27 @@ apply plugin: 'expo-module-gradle-plugin'
 // Bump in lockstep with npm-package/package.json on each release.
 // Kept as a literal (not parsed from package.json) so Android Studio's
 // Gradle diagnostics don't choke on `groovy.json.JsonSlurper` resolution.
-def package_version = '0.2.17'
+def package_version = '0.2.18'
 
 group = 'expo.modules.walletcore'
 version = package_version
+
+// projectDir = node_modules/@kyehyukahn/wallet-core/android/
+// Native artifacts are downloaded by postinstall to ../native/android/.
+//
+// MUST be declared BEFORE the `android { ... }` block. AGP evaluates that
+// closure eagerly during the configuration phase, and
+// `sourceSets.main.jniLibs.srcDirs += ["${nativeAndroidDir}/jniLibs"]` reads
+// the variable from script-scope at that moment. v0.2.17 placed this `def`
+// after the `android { ... }` block (the v0.2.16 location, which worked
+// because back then only the lazily-evaluated `dependencies { ... }` block
+// referenced `${nativeAndroidDir}`) and that broke fresh consumer installs
+// with `MissingPropertyException: nativeAndroidDir` → cascade
+// `SoftwareComponent with name 'release' not found` from
+// expo-module-gradle-plugin's `applyPublishing`. Convention going forward:
+// every `def` lives above the `android { ... }` block. release-pack guard
+// #13 enforces it for this specific name.
+def nativeAndroidDir = new File(projectDir.parentFile, 'native/android')
 
 android {
     namespace 'expo.modules.walletcore'
@@ -49,10 +66,6 @@ android {
     // Same applies to `apply plugin: 'maven-publish'` and any explicit
     // `publishing.publications.release(MavenPublication)` block.
 }
-
-// projectDir = node_modules/@kyehyukahn/wallet-core/android/
-// Native artifacts are downloaded by postinstall to ../native/android/.
-def nativeAndroidDir = new File(projectDir.parentFile, 'native/android')
 
 dependencies {
     // v0.2.17+: consume classes from the unpacked classes.jar (renamed to

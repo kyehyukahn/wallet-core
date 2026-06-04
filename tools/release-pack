@@ -364,6 +364,47 @@ if ! grep -E "execFileSync\(['\"]unzip['\"]" "$WC_POSTINSTALL" >/dev/null; then
 fi
 echo "  OK (postinstall has AAR unpack → classes.jar + jniLibs/)"
 
+# Invariant (v0.2.18+): `def nativeAndroidDir` MUST be declared before the
+# `android { ... }` block. AGP evaluates the closure eagerly during the
+# configuration phase, and `sourceSets.main.jniLibs.srcDirs +=
+# ["${nativeAndroidDir}/..."]` reads from script-scope at that moment. If the
+# `def` lives below the closure, fresh consumer installs fail with
+# `MissingPropertyException: nativeAndroidDir`, cascading to
+# `SoftwareComponent with name 'release' not found` from
+# expo-module-gradle-plugin's `applyPublishing` (red herring — the second
+# error obscures the first). v0.2.17 shipped this exact regression.
+echo "Verifying def nativeAndroidDir precedes the android { ... } block..."
+DEF_LINE=$(grep -n '^def nativeAndroidDir\b' "$WC_BUILD_GRADLE" | head -1 | cut -d: -f1)
+ANDROID_LINE=$(grep -n '^android[[:space:]]*{' "$WC_BUILD_GRADLE" | head -1 | cut -d: -f1)
+# Skip lines whose first non-whitespace chars are `//` so the doc comment
+# above the def (which contains an explanatory example matching the same
+# pattern) doesn't get mistaken for an actual reference site.
+JNI_REF_LINE=$(awk '
+    !/^[[:space:]]*\/\// && /jniLibs\.srcDirs.*nativeAndroidDir/ { print NR; exit }
+' "$WC_BUILD_GRADLE")
+if [[ -z "$DEF_LINE" ]]; then
+    echo "ERROR: $WC_BUILD_GRADLE has no 'def nativeAndroidDir' declaration." >&2
+    exit 13
+fi
+if [[ -z "$ANDROID_LINE" ]]; then
+    echo "ERROR: $WC_BUILD_GRADLE has no 'android { ... }' block." >&2
+    exit 13
+fi
+if [[ -n "$JNI_REF_LINE" && "$DEF_LINE" -gt "$JNI_REF_LINE" ]]; then
+    echo "ERROR: $WC_BUILD_GRADLE declares 'def nativeAndroidDir' at line $DEF_LINE," >&2
+    echo "       AFTER its reference inside jniLibs.srcDirs at line $JNI_REF_LINE." >&2
+    echo "       AGP evaluates android { ... } eagerly; the var must be defined first." >&2
+    echo "       Move 'def nativeAndroidDir = ...' above the android { ... } block." >&2
+    exit 13
+fi
+if [[ "$DEF_LINE" -gt "$ANDROID_LINE" ]]; then
+    echo "ERROR: $WC_BUILD_GRADLE declares 'def nativeAndroidDir' at line $DEF_LINE," >&2
+    echo "       AFTER the android { ... } block starts at line $ANDROID_LINE." >&2
+    echo "       Convention: every script-scope def lives above the android { } block." >&2
+    exit 13
+fi
+echo "  OK (def at line $DEF_LINE, android { } at line $ANDROID_LINE, jniLibs ref at line ${JNI_REF_LINE:-n/a})"
+
 echo "Computing SHA-256 checksums..."
 ( cd "$OUT" && shasum -a 256 *.zip *.aar *.jar *.tar.gz > SHA256SUMS )
 
