@@ -408,6 +408,62 @@ echo "  OK (def at line $DEF_LINE, android { } at line $ANDROID_LINE, jniLibs re
 echo "Computing SHA-256 checksums..."
 ( cd "$OUT" && shasum -a 256 *.zip *.aar *.jar *.tar.gz > SHA256SUMS )
 
+# Invariant (v0.3.0+ — audit W-01): the SHA256SUMS that postinstall.js will
+# verify downloaded assets against must be EMBEDDED in the npm tarball, not
+# fetched from the same BASE_URL as the assets themselves. Without this,
+# `WALLET_CORE_RELEASE_BASE_URL` override (or a compromised release host)
+# could swap binaries and the matching checksums together, defeating the
+# integrity check entirely. The embedded pin is the single source of truth;
+# the remote SHA256SUMS is no longer downloaded by postinstall.
+echo "Embedding SHA256SUMS pin into npm-package/native-pins/ (W-01)..."
+PIN_DIR="npm-package/native-pins"
+mkdir -p "$PIN_DIR"
+cp "$OUT/SHA256SUMS" "$PIN_DIR/SHA256SUMS"
+PIN_ENTRIES=$(wc -l < "$PIN_DIR/SHA256SUMS" | tr -d ' ')
+if [[ "$PIN_ENTRIES" -lt 5 ]]; then
+    echo "ERROR: $PIN_DIR/SHA256SUMS has $PIN_ENTRIES entries (expected ≥5: xcfw × 2, aar, proto.jar, swift-sources)." >&2
+    exit 14
+fi
+echo "  OK (embedded pin: $PIN_DIR/SHA256SUMS, $PIN_ENTRIES entries)"
+
+# Invariant (v0.3.0+): postinstall.js must load the embedded pin and refuse
+# to fall back to a remote SHA256SUMS download. Two checks:
+#   1. It reads npm-package/native-pins/SHA256SUMS from the package tree.
+#   2. It does NOT call downloadString on `${BASE_URL}/${SUMS_FILE}` — that
+#      pattern is the v0.2.x self-referential checksum download we're
+#      retiring.
+echo "Verifying postinstall.js loads the embedded pin + does not download remote SHA256SUMS..."
+if ! grep -E "native-pins[/'\"]+SHA256SUMS" "$WC_POSTINSTALL" >/dev/null; then
+    echo "ERROR: $WC_POSTINSTALL does not reference native-pins/SHA256SUMS." >&2
+    echo "       v0.3.0+ requires loading the embedded pin shipped in the npm tarball" >&2
+    echo "       instead of downloading the SHA256SUMS file from the release host." >&2
+    exit 14
+fi
+if grep -E "downloadString\([^)]*SUMS_FILE" "$WC_POSTINSTALL" >/dev/null; then
+    echo "ERROR: $WC_POSTINSTALL still calls downloadString(BASE_URL + SUMS_FILE)." >&2
+    echo "       Remote SHA256SUMS download is W-01's attack surface — drop it." >&2
+    exit 14
+fi
+echo "  OK (postinstall pins against embedded SHA256SUMS, no remote SUMS fetch)"
+
+# Invariant (v0.3.0+): package.json `files:` allowlist must include
+# `native-pins` so the embedded SHA256SUMS reaches the consumer's tarball.
+echo "Verifying package.json files allowlist includes native-pins..."
+WC_PKG_JSON="npm-package/package.json"
+if ! node -e '
+    const f = require("./" + process.argv[1]).files || [];
+    if (!f.includes("native-pins")) {
+        console.error("files allowlist missing native-pins");
+        process.exit(1);
+    }
+' "$WC_PKG_JSON" 2>&1; then
+    echo "ERROR: $WC_PKG_JSON files allowlist does not include 'native-pins'." >&2
+    echo "       Without it, npm publish drops native-pins/SHA256SUMS from the tarball" >&2
+    echo "       and consumer postinstall fails W-01 pinning." >&2
+    exit 14
+fi
+echo "  OK (package.json files allowlist includes native-pins)"
+
 echo
 echo "Release artifacts ready in $OUT:"
 ls -lh "$OUT"

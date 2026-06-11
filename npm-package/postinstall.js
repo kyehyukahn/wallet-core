@@ -4,7 +4,20 @@
  *
  * Downloads the native artifacts (iOS xcframeworks + Android AAR) for the
  * matching version from the GitHub Releases of kyehyukahn/wallet-core,
- * verifies SHA-256 checksums, and unpacks them under ./native/.
+ * verifies SHA-256 against the EMBEDDED pin shipped in this npm package
+ * (`native-pins/SHA256SUMS`), and unpacks them under ./native/.
+ *
+ * Security note (W-01, v0.3.0+):
+ *   The expected SHA-256 values come from `native-pins/SHA256SUMS` which is
+ *   embedded in the npm tarball at publish time (release-pack copies it
+ *   from build/release-v<version>/SHA256SUMS). The remote SHA256SUMS hosted
+ *   alongside the binaries is NEVER downloaded — without the embedded pin,
+ *   a compromised BASE_URL could swap binaries and the matching checksums
+ *   together and the integrity check would pass against the attacker's own
+ *   ground truth. `WALLET_CORE_RELEASE_BASE_URL` may still be overridden to
+ *   point at a mirror, but the downloaded assets are validated against the
+ *   embedded pin regardless — mirror binaries must match the original
+ *   bytes or postinstall aborts.
  *
  * Skip conditions:
  *   - WALLET_CORE_SKIP_DOWNLOAD=1            : skip entirely (CI cache restore, etc.)
@@ -12,7 +25,9 @@
  *
  * Override:
  *   - WALLET_CORE_RELEASE_BASE_URL           : alternate Release URL prefix
- *                                              (default: GitHub Releases for this version)
+ *                                              (default: GitHub Releases for this version).
+ *                                              Embedded pin still applies — no
+ *                                              opt-out env exists by design.
  */
 
 'use strict';
@@ -58,7 +73,11 @@ const ASSETS = [
   // 'Sources/**/*.swift', same reason as above).
   { name: 'swift-sources.tar.gz',             root: 'pkg', dest: 'ios',     extract: 'untar' },
 ];
-const SUMS_FILE = 'SHA256SUMS';
+// W-01 embedded pin: shipped in the npm tarball at publish time by
+// tools/release-pack (it copies build/release-v<version>/SHA256SUMS into
+// here). Single source of truth for expected SHA-256 of every downloaded
+// native asset. Never fetched over the network.
+const EMBEDDED_PIN = path.join(PKG_DIR, 'native-pins', 'SHA256SUMS');
 
 function log(msg) { console.log(`[@kyehyukahn/wallet-core] ${msg}`); }
 function warn(msg) { console.warn(`[@kyehyukahn/wallet-core] ${msg}`); }
@@ -79,27 +98,6 @@ function downloadToFile(url, filePath) {
         }
         res.pipe(file);
         file.on('finish', () => file.close((err) => err ? reject(err) : resolve()));
-      }).on('error', reject);
-    };
-    get(url);
-  });
-}
-
-async function downloadString(url) {
-  return new Promise((resolve, reject) => {
-    const chunks = [];
-    const get = (u, redirects = 0) => {
-      https.get(u, (res) => {
-        if (res.statusCode >= 300 && res.statusCode < 400 && res.headers.location) {
-          if (redirects >= 5) return reject(new Error(`too many redirects: ${url}`));
-          res.resume();
-          return get(res.headers.location, redirects + 1);
-        }
-        if (res.statusCode !== 200) {
-          return reject(new Error(`HTTP ${res.statusCode} for ${u}`));
-        }
-        res.on('data', (c) => chunks.push(c));
-        res.on('end', () => resolve(Buffer.concat(chunks).toString('utf8')));
       }).on('error', reject);
     };
     get(url);
@@ -148,19 +146,36 @@ async function main() {
   }
 
   log(`fetching native artifacts for v${VERSION} from ${BASE_URL}`);
+  if (process.env.WALLET_CORE_RELEASE_BASE_URL) {
+    warn(`WALLET_CORE_RELEASE_BASE_URL override active — assets will be fetched from a non-default host.`);
+    warn(`The embedded SHA-256 pin shipped with this package is still authoritative; mirror bytes must match.`);
+  }
   ensureDir(NATIVE_DIR);
   const stageDir = path.join(NATIVE_DIR, '.stage');
   fs.rmSync(stageDir, { recursive: true, force: true });
   ensureDir(stageDir);
 
-  // 1. checksums
-  const sumsText = await downloadString(`${BASE_URL}/${SUMS_FILE}`);
-  const sums = parseSums(sumsText);
+  // 1. Load EMBEDDED checksum pin (W-01). The remote SHA256SUMS hosted next
+  //    to the binaries is intentionally NOT fetched — that's the
+  //    self-referential attack surface the audit flagged.
+  if (!fs.existsSync(EMBEDDED_PIN)) {
+    die(
+      `postinstall pin missing: ${path.relative(PKG_DIR, EMBEDDED_PIN)} not found.\n` +
+      `The npm tarball must ship an embedded SHA256SUMS pin. Refusing to fall back\n` +
+      `to a remote-only checksum download — that would let a compromised BASE_URL\n` +
+      `swap binaries and checksums together (audit W-01).`
+    );
+  }
+  const sums = parseSums(fs.readFileSync(EMBEDDED_PIN, 'utf8'));
+  if (Object.keys(sums).length === 0) {
+    die(`postinstall pin malformed: ${EMBEDDED_PIN} parses to 0 entries.`);
+  }
+  log(`loaded embedded SHA-256 pin (${Object.keys(sums).length} entries)`);
 
-  // 2. download + verify each asset
+  // 2. download + verify each asset against the embedded pin
   for (const a of ASSETS) {
     const expected = sums[a.name];
-    if (!expected) die(`SHA256SUMS missing entry for ${a.name}`);
+    if (!expected) die(`embedded pin missing entry for ${a.name}`);
     const local = path.join(stageDir, a.name);
     log(`downloading ${a.name}`);
     await downloadToFile(`${BASE_URL}/${a.name}`, local);
