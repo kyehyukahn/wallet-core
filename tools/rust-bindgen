@@ -38,8 +38,23 @@ export RUSTFLAGS="-Zlocation-detail=none"
 if isTargetSpecified "wasm"; then
   echo "Generating WASM target"
 
+  # SPV is excluded from the wasm build on purpose — and would be useless
+  # there even if it compiled. Two independent reasons:
+  #   1. tw_spv's tokio-runtime feature pulls tokio(net) -> mio, and mio has
+  #      no wasm32-unknown-emscripten backend (26 unresolved-import errors).
+  #   2. Browsers cannot open raw TCP sockets; Bitcoin P2P (port 8333) is
+  #      unreachable from wasm regardless of the async runtime. Web flows
+  #      use signing (works fine in wasm) + an HTTP indexer/RPC for chain
+  #      data instead.
+  # So: native targets keep default features (incl. spv); wasm builds every
+  # default feature EXCEPT spv. The FFI is already gated by
+  # #[cfg(feature = "spv")] so the symbol surface shrinks consistently.
+  # See docs/605.build-wasm.md + docs/607.build-troubleshooting.md.
+  WASM_FEATURES="any-coin,bitcoin,ethereum,evm,keypair,solana,ton,utils"
+
   source ../emsdk/emsdk_env.sh
-  cargo build -Z build-std=std,panic_abort --target wasm32-unknown-emscripten --release --lib
+  cargo build -Z build-std=std,panic_abort --target wasm32-unknown-emscripten --release --lib \
+    --no-default-features --features "$WASM_FEATURES"
 fi
 
 if isTargetSpecified "android"; then
