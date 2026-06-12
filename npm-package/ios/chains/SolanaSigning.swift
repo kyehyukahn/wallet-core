@@ -20,6 +20,15 @@ enum SolanaSigning {
     }
     let privateKey = wallet.getKey(coin: .solana, derivationPath: derivationPath)
 
+    // Memory hygiene — same W-06 pattern as EvmSigning.swift: zero-fill the
+    // extracted key bytes on every exit path after AnySigner.sign returns.
+    var pkData = privateKey.data
+    var input = TW_Solana_Proto_SigningInput()
+    defer {
+      pkData.resetBytes(in: 0..<pkData.count)
+      input.privateKey = Data()
+    }
+
     guard let recipient = tx["recipient"] as? String else {
       throw WalletCoreError.missingField("recipient")
     }
@@ -42,8 +51,7 @@ enum SolanaSigning {
       throw WalletCoreError.missingField("recentBlockhash")
     }
 
-    var input = TW_Solana_Proto_SigningInput()
-    input.privateKey = privateKey.data
+    input.privateKey = pkData
     input.recentBlockhash = recentBlockhash
     input.transferTransaction = TW_Solana_Proto_Transfer.with {
       $0.recipient = recipient

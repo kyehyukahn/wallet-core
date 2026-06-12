@@ -3,6 +3,7 @@ package expo.modules.walletcore.chains
 import com.google.protobuf.ByteString
 import expo.modules.walletcore.WalletCoreError
 import java.math.BigInteger
+import java.util.Arrays
 import wallet.core.java.AnySigner
 import wallet.core.jni.CoinType
 import wallet.core.jni.HDWallet
@@ -38,39 +39,52 @@ internal object EvmSigning {
         }
         val privateKey = wallet.getKey(CoinType.ETHEREUM, derivationPath)
 
-        val mode = detectMode(tx)
-        val toAddress = (tx["to"] as? String) ?: throw WalletCoreError.MissingField("to")
+        // Memory hygiene (mirrors cirqle audit W-06): hold the private-key
+        // bytes in a named local and zero-fill the JVM byte[] after
+        // AnySigner.sign returns, on every exit path. wallet-core's JNI
+        // PrivateKey handle keeps its own internal buffer (finalizer-bound,
+        // outside our reach) so this is scope-narrowing, not zero-residual.
+        // ByteString.copyFrom() takes a defensive copy — wiping pkBytes does
+        // not corrupt the SigningInput handed to AnySigner.
+        val pkBytes = privateKey.data()
+        try {
+            val mode = detectMode(tx)
+            val toAddress = (tx["to"] as? String) ?: throw WalletCoreError.MissingField("to")
 
-        val builder = Ethereum.SigningInput.newBuilder()
-            .setChainId(uint256("chainId", tx["chainId"]))
-            .setNonce(uint256("nonce", tx["nonce"]))
-            .setGasLimit(uint256("gasLimit", tx["gasLimit"]))
-            .setTxMode(mode.toProto())
-            .setToAddress(toAddress)
-            .setPrivateKey(ByteString.copyFrom(privateKey.data()))
-            .setTransaction(buildTransaction(tx))
+            val builder = Ethereum.SigningInput.newBuilder()
+                .setChainId(uint256("chainId", tx["chainId"]))
+                .setNonce(uint256("nonce", tx["nonce"]))
+                .setGasLimit(uint256("gasLimit", tx["gasLimit"]))
+                .setTxMode(mode.toProto())
+                .setToAddress(toAddress)
+                .setPrivateKey(ByteString.copyFrom(pkBytes))
+                .setTransaction(buildTransaction(tx))
 
-        when (mode) {
-            EvmTxMode.LEGACY ->
-                builder.gasPrice = uint256("gasPrice", tx["gasPrice"])
-            EvmTxMode.ENVELOPED -> {
-                builder.maxFeePerGas = uint256("maxFeePerGas", tx["maxFeePerGas"])
-                builder.maxInclusionFeePerGas = uint256("maxPriorityFeePerGas", tx["maxPriorityFeePerGas"])
+            when (mode) {
+                EvmTxMode.LEGACY ->
+                    builder.gasPrice = uint256("gasPrice", tx["gasPrice"])
+                EvmTxMode.ENVELOPED -> {
+                    builder.maxFeePerGas = uint256("maxFeePerGas", tx["maxFeePerGas"])
+                    builder.maxInclusionFeePerGas = uint256("maxPriorityFeePerGas", tx["maxPriorityFeePerGas"])
+                }
             }
-        }
 
-        // Java AnySigner is generic:
-        //   <T extends MessageLite> T sign(MessageLite input, CoinType coin, Parser<T>)
-        // Pass the protobuf input + parser; AnySigner serialises and parses
-        // for us. Earlier scaffold called sign(byte[], CoinType) which is
-        // not a real overload (signed bytes round-tripped through plain
-        // nativeSign return raw bytes, never a SigningOutput).
-        val output: Ethereum.SigningOutput = AnySigner.sign(
-            builder.build(),
-            CoinType.ETHEREUM,
-            Ethereum.SigningOutput.parser(),
-        )
-        return "0x" + output.encoded.toByteArray().toHexString()
+            // Java AnySigner is generic:
+            //   <T extends MessageLite> T sign(MessageLite input, CoinType coin, Parser<T>)
+            // Pass the protobuf input + parser; AnySigner serialises and parses
+            // for us. Earlier scaffold called sign(byte[], CoinType) which is
+            // not a real overload (signed bytes round-tripped through plain
+            // nativeSign return raw bytes, never a SigningOutput).
+            val output: Ethereum.SigningOutput = AnySigner.sign(
+                builder.build(),
+                CoinType.ETHEREUM,
+                Ethereum.SigningOutput.parser(),
+            )
+            builder.clearPrivateKey()
+            return "0x" + output.encoded.toByteArray().toHexString()
+        } finally {
+            Arrays.fill(pkBytes, 0.toByte())
+        }
     }
 
     private fun detectMode(tx: Map<String, Any?>): EvmTxMode {

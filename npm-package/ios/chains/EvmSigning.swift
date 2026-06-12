@@ -29,9 +29,20 @@ enum EvmSigning {
     }
     let privateKey = wallet.getKey(coin: .ethereum, derivationPath: derivationPath)
 
+    // Memory hygiene (mirrors cirqle audit W-06): hold the key bytes in a
+    // mutable local Data (value-typed copy) and zero-fill it on every exit
+    // path after AnySigner.sign returns. wallet-core's PrivateKey object
+    // retains its own buffer (deinit-bound, outside our reach) — this is
+    // scope-narrowing, not zero-residual.
+    var pkData = privateKey.data
+    var input = TW_Ethereum_Proto_SigningInput()
+    defer {
+      pkData.resetBytes(in: 0..<pkData.count)
+      input.privateKey = Data()
+    }
+
     let mode = try detectMode(tx)
 
-    var input = TW_Ethereum_Proto_SigningInput()
     input.chainID = try uint256("chainId", tx["chainId"])
     input.nonce = try uint256("nonce", tx["nonce"])
     input.gasLimit = try uint256("gasLimit", tx["gasLimit"])
@@ -49,7 +60,7 @@ enum EvmSigning {
       throw WalletCoreError.missingField("to")
     }
     input.toAddress = toAddress
-    input.privateKey = privateKey.data
+    input.privateKey = pkData
 
     input.transaction = try buildTransaction(tx)
 
