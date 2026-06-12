@@ -106,11 +106,23 @@ echo "Normalising Swift Protobuf module name (CocoaPods compatibility)..."
 # v0.2.3 all shipped this — surfaced only on v0.2.3 once the pb.swift files
 # finally reached the pod target's SwiftFileList (B4 fix).
 #
-# We undo the rewrite in-place here, just before the tarball is produced,
-# so downstream pods can compile the Protobuf tree as-is.
-# Covers both the generated Protobuf tree AND hand-written wrappers like
-# swift/Sources/AnySigner.swift that also `import WalletCoreSwiftProtobuf`.
-SWIFT_ROOT="swift/Sources"
+# We undo the rewrite on a STAGED COPY of swift/Sources, just before the
+# tarball is produced, so downstream pods can compile the Protobuf tree
+# as-is. Covers both the generated Protobuf tree AND hand-written wrappers
+# like swift/Sources/AnySigner.swift that also `import WalletCoreSwiftProtobuf`.
+#
+# Staged copy, NOT in-place (since v0.3.1+): through v0.3.1 this pass and
+# the WalletCoreCommon-import pass below edited the git-tracked
+# swift/Sources/ tree directly, leaving 4 hand-written wrappers
+# (AnySigner/TWCardano/TWData/TWString.swift) permanently dirty after
+# every release. The sources must stay upstream-shaped — the rewritten
+# form (`import WalletCoreCommon`) is a CocoaPods-only module name that
+# would break the SwiftPM build path if committed. All CocoaPods-only
+# rewrites now happen inside $SWIFT_STAGE and the working tree is never
+# touched.
+SWIFT_STAGE=$(mktemp -d)
+ditto swift/Sources "$SWIFT_STAGE/Sources"
+SWIFT_ROOT="$SWIFT_STAGE/Sources"
 if [[ -d "$SWIFT_ROOT" ]]; then
     find "$SWIFT_ROOT" -name '*.swift' -print0 | while IFS= read -r -d '' f; do
         # macOS sed needs `-i ''` (with empty backup suffix); GNU sed accepts `-i`.
@@ -215,7 +227,10 @@ TAR_EXCLUDE_ARGS=()
 for skip in "${SWIFT_SKIP[@]}"; do
     TAR_EXCLUDE_ARGS+=(--exclude "$skip")
 done
-tar -czf "$OUT/swift-sources.tar.gz" "${TAR_EXCLUDE_ARGS[@]}" -C swift Sources
+# Tar from the staged (rewritten) copy — the tracked swift/Sources tree is
+# never modified by this script.
+tar -czf "$OUT/swift-sources.tar.gz" "${TAR_EXCLUDE_ARGS[@]}" -C "$SWIFT_STAGE" Sources
+rm -rf "$SWIFT_STAGE"
 
 # Invariant: the tarball MUST contain raw protoc-generated *.pb.swift files.
 # Their absence means tools/generate-files ios was run without protoc-gen-swift
